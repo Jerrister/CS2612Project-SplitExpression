@@ -17,7 +17,7 @@ Local Open Scope string.
 Local Open Scope Z.
 Local Open Scope sets.
 
-Module DntSem_WhileD3.
+Module DntSem_WhileD_Split.
 Import Lang_While.
 Import Lang_WhileD
        DntSem_WhileD2 EDenote CDenote
@@ -25,7 +25,11 @@ Import Lang_WhileD
 
 Print expr.
 
-Definition split_expression_AsgnVar 
+Definition add_var
+    :
+    var_name X
+
+Fixpoint split_expression_AsgnVar 
     (X : var_name)
     (e : expr) :
     com := 
@@ -35,7 +39,20 @@ Definition split_expression_AsgnVar
     | EVar x =>
         CAsgnVar X e
     | EBinop op e1 e2 =>
-        CSkip
+        match e1, e2 with
+        | EConst c1, EConst c2 =>
+            CAsgnVar X e
+        | EConst c, EVar v =>
+            CAsgnVar X e
+        | EVar v, EConst c =>
+            CAsgnVar X e
+        | EVar v1, EVar v2 =>
+            CAsgnVar X e
+        | EConst c, _ =>
+            CSeq (split_expression_AsgnVar (X1: var_name) e2) (CAsgnVar X (EBinop op e1 X1))
+        | _, _ =>
+            CAsgnVar X e
+        end
     | EUnop op e =>
         CSkip
     | EDeref e =>
@@ -88,4 +105,4 @@ Theorem split_expression_refine :
 Admitted.
 
 
-End DntSem_WhileD3.
+End DntSem_WhileD_Split.
