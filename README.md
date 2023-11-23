@@ -5,7 +5,7 @@ Put SplitExpression.v file under /cs2612-aut2023/pl/ folder can successfully com
 
 
 # Log
-## 1124
+## 1123
 ### 遇到的困难
 * 定义split_expression的过程需要创建新变量，而这似乎是不行的
 * 读题目要求，似乎也否定了这一点
