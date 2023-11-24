@@ -17,19 +17,95 @@ Local Open Scope string.
 Local Open Scope Z.
 Local Open Scope sets.
 
+Module Lang_WhileDS.
+Import Lang_WhileD.
+
+(* 重新定义Binop, Uniop 和 Comp? *)
+
+Inductive CV : Type :=
+  | SEConst (n : Z): CV
+  | SEvar (x : var_name): CV.
+
+
+Inductive Sexpr : Type :=
+  | SEConstOrVar (cv: CV): Sexpr
+  | SEBinop (op: binop) (cv1 cv2: CV): Sexpr
+  | SEUnop (op: unop) (cv: CV): Sexpr
+  | SEDeref (cv: CV): Sexpr
+  | SEAddrOf (cv: CV): Sexpr.
+
+(** 程序语句的语法树不变。*)
+
+Inductive Scom : Type :=
+  | SCSkip: Scom
+  | SCAsgnVar (x: var_name) (e: Sexpr): Scom
+  | SCAsgnDeref (cv1 cv2: CV): Scom (* CAsgnDeref (cv1 cv2: CV) (offset: EConst): com *)
+  | SCIf (e: Sexpr) (l1 l2: Scomlist): Scom (* condition 需要时怎么样的形式？ *)
+  | SCWhile (pre : Scomlist) (e: Sexpr) (body: Scomlist): Scom
+with Scomlist : Type :=
+  | nil 
+  | cons (c : Scom) (l : Scomlist).
+
+Check cons SCSkip (cons SCSkip nil) : Scomlist.
+
+End Lang_WhileDS.
+
+
+
+
+
 Module DntSem_WhileD_Split.
-Import Lang_While.
-Import Lang_WhileD
+Import Lang_WhileDS
+       Lang_WhileD
        DntSem_WhileD2 EDenote CDenote
        BWFix KTFix Sets_CPO Sets_CL.
 
 Print expr.
 
-Definition add_var
-    :
-    var_name X
+Definition genSEConst (n : Z) : Sexpr:=
+    (SEConstOrVar (SEConst n)).
 
-Fixpoint split_expression_AsgnVar 
+Definition genSEVar (x : var_name) : Sexpr:=
+    (SEConstOrVar (SEvar x)).
+
+Definition expr2Sexpr (e : expr) : Sexpr:=
+    match
+
+
+Fixpoint split_expression
+    (e : expr)
+    (RET : var_name) :
+    Scomlist :=
+    match e with
+    | EConst n =>
+        cons (SCAsgnVar RET (genSEConst n)) nil
+    | EVar x =>
+        cons (SCAsgnVar RET (genSEVar x)) nil
+    | EBinop op e1 e2 =>
+    (* append s_e(e1) s_e(e2) (ret = r1 + r2) *)
+        match e1, e2 with
+        | EConst c1, EConst c2 =>
+            cons (SCAsgnVar RET (SEBinop op (genSEConst c1) (genSEConst c2))) nil
+        | EConst c, EVar v =>
+            cons (SCAsgnVar RET (SEBinop op (genSEConst c) (genSEVar v))) nil
+        | EVar v, EConst c =>
+            cons (SCAsgnVar RET (SEBinop op (genSEVar v) (genSEConst c))) nil
+        | EVar v1, EVar v2 =>
+            cons (SCAsgnVar RET (SEBinop op (genSEVar v1) (genSEVar v2))) nil
+        | EConst c, _ =>
+            cons (SCAsgnVar x0 (SEBinop op (genSEConst c1) (genSEConst c2)))
+        | _, _ =>
+            CAsgnVar X e
+        end
+    | EUnop op e =>
+        nil
+    | EDeref e =>
+        nil
+    | EAddrOf e =>
+        nil
+    end.
+
+(* Fixpoint split_expression_AsgnVar 
     (X : var_name)
     (e : expr) :
     com := 
@@ -81,8 +157,12 @@ Definition split_expression_While
     com := 
     CSkip.
 
+
+
+
+    
 Fixpoint split_expression
-    (c : com) :
+    (e : expr) :
     com :=
     match c with
     | CSkip =>
@@ -102,7 +182,7 @@ Fixpoint split_expression
 Theorem split_expression_refine :
     forall c : com,
     [[ (split_expression c) ]] ⊆ [[ c ]].
-Admitted.
+Admitted. *)
 
 
 End DntSem_WhileD_Split.
