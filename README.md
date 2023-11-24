@@ -5,6 +5,12 @@ Put SplitExpression.v file under /cs2612-aut2023/pl/ folder can successfully com
 
 
 # Log
+## 1124
+定义了WhileDS语言的语法
+### 遇到的困难
+* 还是无法构造中间变量名
+
+
 ## 1123
 ### 遇到的困难
 * 定义split_expression的过程需要创建新变量，而这似乎是不行的
@@ -15,7 +21,4 @@ Put SplitExpression.v file under /cs2612-aut2023/pl/ folder can successfully com
 * 定义新语句is_split旧语句，而不是显示地展现split的过程
 * 可能需要定义新的结构，比如链表
 
-## 1124
-定义了WhileDS语言的语法
-### 遇到的困难
-* 还是无法构造中间变量名
+
