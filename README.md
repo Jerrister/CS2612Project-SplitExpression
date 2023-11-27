@@ -5,6 +5,17 @@ Put SplitExpression.v file under /cs2612-aut2023/pl/ folder can successfully com
 
 
 # Log
+
+## 1127
+* 给comlist添加了重载和方法，实现Nat的加法
+* WhileDS语言中的变量名：设计了nat和string分别到Svar_name的映射及其性质
+* 部分完成了split_express(to comlist)函数
+### 存在的问题
+* 正确性不保证
+### 下一步工作
+* 完善拆分函数
+* 定义WhileDS语义
+
 ## 1124
 定义了WhileDS语言的语法
 ### 遇到的困难
