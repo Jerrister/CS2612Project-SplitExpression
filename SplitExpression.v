@@ -28,7 +28,7 @@ Definition Svar_name : Type := nat.
 
 Inductive CV : Type :=
   | SEConst (n : Z): CV
-  | SEvar (x : Svar_name): CV.
+  | SEVar (x : Svar_name): CV.
 
 
 Inductive Sexpr : Type :=
@@ -72,19 +72,29 @@ Fixpoint app (l1: Scomlist) (l2: Scomlist) : Scomlist :=
 
 Notation "x ++ y" := (app x y).
 
+(* Fixpoint nat2Z (n : nat) : Z :=
+    match n with
+    | O => 0
+    | S N => (1 + (nat2Z N))
+    end.
 
+Example test : nat2Z 15%nat = 15.
+Proof.
+    unfold nat2Z.
+    lia.
+Qed. *)
+
+Definition nat_add (a : nat) (b : nat) : nat :=
+    Nat.iter a S b.
 
 End Lang_WhileDS.
 
 
-Module DntSem_WhileD_Split.
+Module DntSem_WhileDS.
 Import Lang_WhileDS
        Lang_WhileD
        DntSem_WhileD2 EDenote CDenote
        BWFix KTFix Sets_CPO Sets_CL.
-
-Definition genSEConst (n : Z) : Sexpr :=
-    (SEConstOrVar (SEConst n)).
 
 Class Names : Type :=
 {
@@ -123,33 +133,58 @@ Proof.
     tauto.
 Qed.
 
-Definition genSEVar {NameX : Names} (x : var_name) : Sexpr:=
-    (SEConstOrVar (SEvar (name2Sname x))).
+Definition genSEConst (n : Z) : CV :=
+    (SEConst n).
 
-Fixpoint expr2coml
+Definition genSEVar {NameX : Names} (x : var_name) : CV:=
+    (SEVar (name2Sname x)).
+
+Definition genSEVar_n {NameX : Names} (vcnt :nat) : CV :=
+    SEVar (nat2Sname vcnt).
+
+Definition genSECV {NameX : Names} (vcnt :nat) : Sexpr :=
+    SEConstOrVar (SEVar (nat2Sname vcnt)).
+
+Fixpoint expr2coml {NameX : Names}
     (e : expr)
-    (RET : Svar_name) :
+    (RET : Svar_name)
+    (vcnt : nat) :
     Scomlist :=
+    (* [(SCAsgnVar RET (expr2coml_e e RET vcnt))] ++ (expr2coml_l e RET vcnt) *)
     match e with
     | EConst n =>
-        [(SCAsgnVar RET (genSEConst n))]
+        [(SCAsgnVar RET (SEConstOrVar (genSEConst n)))]
     | EVar x =>
-        [(SCAsgnVar RET (genSEVar x))]
+        [(SCAsgnVar RET (SEConstOrVar (genSEVar x)))]
     | EBinop op e1 e2 =>
-    (* append s_e(e1) s_e(e2) (ret = r1 + r2) *)
         match e1, e2 with
         | EConst c1, EConst c2 =>
-            [(SCAsgnVar RET (SEBinop op (genSEConst c1) (genSEConst c2)))]
+            [(SCAsgnVar RET (SEBinop op (SEConst c1) (SEConst c2)))]
         | EConst c, EVar v =>
-            [(SCAsgnVar RET (SEBinop op (genSEConst c) (genSEVar v)))]
+            [(SCAsgnVar RET (SEBinop op (SEConst c) (genSEVar v)))]
         | EVar v, EConst c =>
-            [(SCAsgnVar RET (SEBinop op (genSEVar v) (genSEConst c)))]
+            [(SCAsgnVar RET (SEBinop op (genSEVar v) (SEConst c)))]
         | EVar v1, EVar v2 =>
             [(SCAsgnVar RET (SEBinop op (genSEVar v1) (genSEVar v2)))]
         | EConst c, _ =>
-            [(SCAsgnVar x0 (SEBinop op (genSEConst c) (genSEConst c2)))]
+            (expr2coml e2 (nat2Sname vcnt) (S vcnt)) 
+            ++ [(SCAsgnVar RET (SEBinop op (SEConst c) (genSEVar_n vcnt)))]
+        | EVar v, _ =>
+            (expr2coml e2 (nat2Sname vcnt) (S vcnt)) 
+            ++ [(SCAsgnVar RET (SEBinop op (genSEVar v) (genSEVar_n vcnt)))]        
+        | _ , EConst c =>
+            (expr2coml e1 (nat2Sname vcnt) (S vcnt)) 
+            ++ [(SCAsgnVar RET (SEBinop op (genSEVar_n vcnt) (SEConst c)))]
+        | _ , EVar v =>
+            (expr2coml e1 (nat2Sname vcnt) (S vcnt)) 
+            ++ [(SCAsgnVar RET (SEBinop op (genSEVar_n vcnt) (genSEVar v)))]
         | _, _ =>
-            CAsgnVar X e
+            (expr2coml e1 (nat2Sname vcnt) (S vcnt)) 
+            ++ (expr2coml e2 
+                (nat2Sname (nat_add vcnt (length (expr2coml e1 (nat2Sname vcnt) (S vcnt))))) 
+                (S (nat_add vcnt (length (expr2coml e1 (nat2Sname vcnt) (S vcnt)))))) 
+            ++ [(SCAsgnVar RET (SEBinop op (genSEVar_n vcnt)
+                        (genSEVar_n (nat_add vcnt (length (expr2coml e1 (nat2Sname vcnt) (S vcnt)))))))]
         end
     | EUnop op e =>
         []
@@ -158,15 +193,18 @@ Fixpoint expr2coml
     | EAddrOf e =>
         []
     end.
-with expr2coml_e
+
+
+Fixpoint expr2coml_e {NameX : Names}
     (e : expr)
-    (RET : var_name) :
+    (RET : Svar_name)
+    (vcnt : nat) :
     Sexpr := 
     match e with
     | EConst n =>
-        (genSEConst n)
+        SEConstOrVar (genSEConst n)
     | EVar x =>
-        (genSEVar x)
+        SEConstOrVar (genSEVar x)
     | EBinop op e1 e2 =>
         match e1, e2 with
         | EConst c1, EConst c2 =>
@@ -178,16 +216,49 @@ with expr2coml_e
         | EVar v1, EVar v2 =>
             (SEBinop op (genSEVar v1) (genSEVar v2))
         | EConst c, _ =>
-            cons (SCAsgnVar x0 (SEBinop op (genSEConst c1) (genSEConst c2)))
+            (SEBinop op (genSEConst c) (genSEVar_n vcnt))
         | _, _ =>
-            CAsgnVar X e
+            SEConstOrVar (genSEConst 0)
         end
     | EUnop op e =>
-        nil
+        SEConstOrVar (genSEConst 0)
     | EDeref e =>
-        nil
+        SEConstOrVar (genSEConst 0)
     | EAddrOf e =>
-        nil
+        SEConstOrVar (genSEConst 0)
+    end
+with expr2coml_l {NameX : Names}
+    (e : expr)
+    (RET : Svar_name)
+    (vcnt : nat) :
+    Scomlist := 
+    match e with
+    | EConst n =>
+        []
+    | EVar x =>
+        []
+    | EBinop op e1 e2 =>
+        match e1, e2 with
+        | EConst c1, EConst c2 =>
+            []
+        | EConst c, EVar v =>
+            []
+        | EVar v, EConst c =>
+            []
+        | EVar v1, EVar v2 =>
+            []
+        | EConst c, _ =>
+            (* expr2coml e2 (nat2Sname vcnt) (S vcnt) *)
+            []
+        | _, _ =>
+            []
+        end
+    | EUnop op e =>
+        []
+    | EDeref e =>
+        []
+    | EAddrOf e =>
+        []
     end.
 
 (* Fixpoint split_expression_AsgnVar 
@@ -270,4 +341,4 @@ Theorem split_expression_refine :
 Admitted. *)
 
 
-End DntSem_WhileD_Split.
+End DntSem_WhileDS.
