@@ -21,10 +21,14 @@ Module Lang_WhileDS.
 Import Lang_WhileD.
 
 (* 重新定义Binop, Uniop 和 Comp? *)
+Print var_name.
+Print string.
+
+Definition Svar_name : Type := nat.
 
 Inductive CV : Type :=
   | SEConst (n : Z): CV
-  | SEvar (x : var_name): CV.
+  | SEvar (x : Svar_name): CV.
 
 
 Inductive Sexpr : Type :=
@@ -38,7 +42,7 @@ Inductive Sexpr : Type :=
 
 Inductive Scom : Type :=
   | SCSkip: Scom
-  | SCAsgnVar (x: var_name) (e: Sexpr): Scom
+  | SCAsgnVar (x: Svar_name) (e: Sexpr): Scom
   | SCAsgnDeref (cv1 cv2: CV): Scom (* CAsgnDeref (cv1 cv2: CV) (offset: EConst): com *)
   | SCIf (e: Sexpr) (l1 l2: Scomlist): Scom (* condition 需要时怎么样的形式？ *)
   | SCWhile (pre : Scomlist) (e: Sexpr) (body: Scomlist): Scom
@@ -46,12 +50,31 @@ with Scomlist : Type :=
   | nil 
   | cons (c : Scom) (l : Scomlist).
 
-Check cons SCSkip (cons SCSkip nil) : Scomlist.
+Notation "x :: l" := (cons x l).
+Notation "[]" := nil.
+Notation "[ x , .. , y ]" := (cons x .. (cons y nil) ..).
+
+
+Check SCSkip :: nil : Scomlist.
+Check [SCSkip, SCSkip] : Scomlist.
+
+Fixpoint length (l:Scomlist) : nat :=
+  match l with
+  | nil => O
+  | h :: t => S (length t)
+  end.
+
+Fixpoint app (l1: Scomlist) (l2: Scomlist) : Scomlist :=
+    match l1 with
+    | nil => l2
+    | h :: t => h :: (app t l2)
+    end.
+
+Notation "x ++ y" := (app x y).
+
+
 
 End Lang_WhileDS.
-
-
-
 
 
 Module DntSem_WhileD_Split.
@@ -60,38 +83,100 @@ Import Lang_WhileDS
        DntSem_WhileD2 EDenote CDenote
        BWFix KTFix Sets_CPO Sets_CL.
 
-Print expr.
-
-Definition genSEConst (n : Z) : Sexpr:=
+Definition genSEConst (n : Z) : Sexpr :=
     (SEConstOrVar (SEConst n)).
 
-Definition genSEVar (x : var_name) : Sexpr:=
-    (SEConstOrVar (SEvar x)).
+Class Names : Type :=
+{
+    name2Sname : var_name -> Svar_name;
+    nat2Sname : nat -> Svar_name
+}.
 
-Definition expr2Sexpr (e : expr) : Sexpr:=
-    match
+Class NamesProperty1 {NameX : Names} : Prop :=
+{
+    trans_prop1 : forall (x : var_name) (y : var_name) , (x = y) <-> (name2Sname x = name2Sname y);
+    trans_prop2 : forall (x : nat) (y : nat) , (x = y) <-> (nat2Sname x = nat2Sname y);
+    trans_prop3 : forall (x : var_name) (y : nat) , name2Sname x <> nat2Sname y
+}.
 
+Lemma name_trans_prop1 {NameX: Names} {NPX : NamesProperty1}:
+    forall (x : var_name) (y : var_name) , (x = y) <-> (name2Sname x = name2Sname y).
+Proof.
+    intros.
+    pose proof trans_prop1 x y.
+    tauto.
+Qed.
 
-Fixpoint split_expression
+Lemma name_trans_prop2 {NameX: Names} {NPX : NamesProperty1}:
+    forall (x : nat) (y : nat) , (x = y) <-> (nat2Sname x = nat2Sname y).
+Proof.
+    intros.
+    pose proof trans_prop2 x y.
+    tauto.
+Qed.
+
+Lemma name_trans_prop3 {NameX: Names} {NPX : NamesProperty1}:
+    forall (x : var_name) (y : nat) , (name2Sname x <> nat2Sname y).
+Proof.
+    intros.
+    pose proof trans_prop3 x y.
+    tauto.
+Qed.
+
+Definition genSEVar {NameX : Names} (x : var_name) : Sexpr:=
+    (SEConstOrVar (SEvar (name2Sname x))).
+
+Fixpoint expr2coml
     (e : expr)
-    (RET : var_name) :
+    (RET : Svar_name) :
     Scomlist :=
     match e with
     | EConst n =>
-        cons (SCAsgnVar RET (genSEConst n)) nil
+        [(SCAsgnVar RET (genSEConst n))]
     | EVar x =>
-        cons (SCAsgnVar RET (genSEVar x)) nil
+        [(SCAsgnVar RET (genSEVar x))]
     | EBinop op e1 e2 =>
     (* append s_e(e1) s_e(e2) (ret = r1 + r2) *)
         match e1, e2 with
         | EConst c1, EConst c2 =>
-            cons (SCAsgnVar RET (SEBinop op (genSEConst c1) (genSEConst c2))) nil
+            [(SCAsgnVar RET (SEBinop op (genSEConst c1) (genSEConst c2)))]
         | EConst c, EVar v =>
-            cons (SCAsgnVar RET (SEBinop op (genSEConst c) (genSEVar v))) nil
+            [(SCAsgnVar RET (SEBinop op (genSEConst c) (genSEVar v)))]
         | EVar v, EConst c =>
-            cons (SCAsgnVar RET (SEBinop op (genSEVar v) (genSEConst c))) nil
+            [(SCAsgnVar RET (SEBinop op (genSEVar v) (genSEConst c)))]
         | EVar v1, EVar v2 =>
-            cons (SCAsgnVar RET (SEBinop op (genSEVar v1) (genSEVar v2))) nil
+            [(SCAsgnVar RET (SEBinop op (genSEVar v1) (genSEVar v2)))]
+        | EConst c, _ =>
+            [(SCAsgnVar x0 (SEBinop op (genSEConst c) (genSEConst c2)))]
+        | _, _ =>
+            CAsgnVar X e
+        end
+    | EUnop op e =>
+        []
+    | EDeref e =>
+        []
+    | EAddrOf e =>
+        []
+    end.
+with expr2coml_e
+    (e : expr)
+    (RET : var_name) :
+    Sexpr := 
+    match e with
+    | EConst n =>
+        (genSEConst n)
+    | EVar x =>
+        (genSEVar x)
+    | EBinop op e1 e2 =>
+        match e1, e2 with
+        | EConst c1, EConst c2 =>
+            (SEBinop op (genSEConst c1) (genSEConst c2))
+        | EConst c, EVar v =>
+            (SEBinop op (genSEConst c) (genSEVar v))
+        | EVar v, EConst c =>
+            (SEBinop op (genSEVar v) (genSEConst c))
+        | EVar v1, EVar v2 =>
+            (SEBinop op (genSEVar v1) (genSEVar v2))
         | EConst c, _ =>
             cons (SCAsgnVar x0 (SEBinop op (genSEConst c1) (genSEConst c2)))
         | _, _ =>
