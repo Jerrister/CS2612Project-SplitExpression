@@ -150,7 +150,6 @@ Fixpoint expr2coml {NameX : Names}
     (RET : Svar_name)
     (vcnt : nat) :
     Scomlist :=
-    (* [(SCAsgnVar RET (expr2coml_e e RET vcnt))] ++ (expr2coml_l e RET vcnt) *)
     match e with
     | EConst n =>
         [(SCAsgnVar RET (SEConstOrVar (genSEConst n)))]
@@ -187,15 +186,39 @@ Fixpoint expr2coml {NameX : Names}
                         (genSEVar_n (nat_add vcnt (length (expr2coml e1 (nat2Sname vcnt) (S vcnt)))))))]
         end
     | EUnop op e =>
-        []
+        match e with
+        | EConst c =>
+            [(SCAsgnVar RET (SEUnop op (SEConst c)))]
+        | EVar v =>
+            [(SCAsgnVar RET (SEUnop op (genSEVar v)))]
+        | _ =>
+            (expr2coml e (nat2Sname vcnt) (S vcnt)) 
+            ++ [(SCAsgnVar RET (SEUnop op (genSEVar_n vcnt)))]
+        end
     | EDeref e =>
-        []
+        match e with
+        | EConst c =>
+            [(SCAsgnVar RET (SEDeref (SEConst c)))]
+        | EVar v =>
+            [(SCAsgnVar RET (SEDeref (genSEVar v)))]
+        | _ =>
+            (expr2coml e (nat2Sname vcnt) (S vcnt)) 
+            ++ [(SCAsgnVar RET (SEDeref (genSEVar_n vcnt)))]
+        end
     | EAddrOf e =>
-        []
+        match e with
+        | EConst c =>
+            [(SCAsgnVar RET (SEAddrOf (SEConst c)))]
+        | EVar v =>
+            [(SCAsgnVar RET (SEAddrOf (genSEVar v)))]
+        | _ =>
+            (expr2coml e (nat2Sname vcnt) (S vcnt)) 
+            ++ [(SCAsgnVar RET (SEAddrOf (genSEVar_n vcnt)))]
+        end
     end.
 
 
-Fixpoint expr2coml_e {NameX : Names}
+Definition expr2coml_e {NameX : Names}
     (e : expr)
     (RET : Svar_name)
     (vcnt : nat) :
@@ -208,26 +231,55 @@ Fixpoint expr2coml_e {NameX : Names}
     | EBinop op e1 e2 =>
         match e1, e2 with
         | EConst c1, EConst c2 =>
-            (SEBinop op (genSEConst c1) (genSEConst c2))
+            SEBinop op (SEConst c1) (SEConst c2)
         | EConst c, EVar v =>
-            (SEBinop op (genSEConst c) (genSEVar v))
+            SEBinop op (SEConst c) (genSEVar v)
         | EVar v, EConst c =>
-            (SEBinop op (genSEVar v) (genSEConst c))
+            SEBinop op (genSEVar v) (SEConst c)
         | EVar v1, EVar v2 =>
-            (SEBinop op (genSEVar v1) (genSEVar v2))
+            SEBinop op (genSEVar v1) (genSEVar v2)
         | EConst c, _ =>
-            (SEBinop op (genSEConst c) (genSEVar_n vcnt))
+            SEBinop op (SEConst c) (genSEVar_n vcnt)
+        | EVar v, _ =>
+            SEBinop op (genSEVar v) (genSEVar_n vcnt)   
+        | _ , EConst c =>
+            SEBinop op (genSEVar_n vcnt) (SEConst c)
+        | _ , EVar v =>
+            SEBinop op (genSEVar_n vcnt) (genSEVar v)
         | _, _ =>
-            SEConstOrVar (genSEConst 0)
+            SEBinop op (genSEVar_n vcnt)
+            (genSEVar_n (nat_add vcnt (length (expr2coml e1 (nat2Sname vcnt) (S vcnt)))))
         end
     | EUnop op e =>
-        SEConstOrVar (genSEConst 0)
+        match e with
+        | EConst c =>
+            SEUnop op (SEConst c)
+        | EVar v =>
+            SEUnop op (genSEVar v)
+        | _ =>
+            SEUnop op (genSEVar_n vcnt)
+        end
     | EDeref e =>
-        SEConstOrVar (genSEConst 0)
+        match e with
+        | EConst c =>
+            SEDeref (SEConst c)
+        | EVar v =>
+            SEDeref (genSEVar v)
+        | _ =>
+            SEDeref (genSEVar_n vcnt)
+        end
     | EAddrOf e =>
-        SEConstOrVar (genSEConst 0)
-    end
-with expr2coml_l {NameX : Names}
+        match e with
+        | EConst c =>
+            SEAddrOf (SEConst c)
+        | EVar v =>
+            SEAddrOf (genSEVar v)
+        | _ =>
+            SEAddrOf (genSEVar_n vcnt)
+        end
+    end.
+
+Definition expr2coml_l {NameX : Names}
     (e : expr)
     (RET : Svar_name)
     (vcnt : nat) :
@@ -248,97 +300,46 @@ with expr2coml_l {NameX : Names}
         | EVar v1, EVar v2 =>
             []
         | EConst c, _ =>
-            (* expr2coml e2 (nat2Sname vcnt) (S vcnt) *)
-            []
+            (expr2coml e2 (nat2Sname vcnt) (S vcnt)) 
+        | EVar v, _ =>
+            (expr2coml e2 (nat2Sname vcnt) (S vcnt))      
+        | _ , EConst c =>
+            (expr2coml e1 (nat2Sname vcnt) (S vcnt)) 
+        | _ , EVar v =>
+            (expr2coml e1 (nat2Sname vcnt) (S vcnt)) 
         | _, _ =>
-            []
+            (expr2coml e1 (nat2Sname vcnt) (S vcnt)) 
+            ++ (expr2coml e2 
+                (nat2Sname (nat_add vcnt (length (expr2coml e1 (nat2Sname vcnt) (S vcnt))))) 
+                (S (nat_add vcnt (length (expr2coml e1 (nat2Sname vcnt) (S vcnt)))))) 
         end
     | EUnop op e =>
-        []
-    | EDeref e =>
-        []
-    | EAddrOf e =>
-        []
-    end.
-
-(* Fixpoint split_expression_AsgnVar 
-    (X : var_name)
-    (e : expr) :
-    com := 
-    match e with
-    | EConst n =>
-        CAsgnVar X e
-    | EVar x =>
-        CAsgnVar X e
-    | EBinop op e1 e2 =>
-        match e1, e2 with
-        | EConst c1, EConst c2 =>
-            CAsgnVar X e
-        | EConst c, EVar v =>
-            CAsgnVar X e
-        | EVar v, EConst c =>
-            CAsgnVar X e
-        | EVar v1, EVar v2 =>
-            CAsgnVar X e
-        | EConst c, _ =>
-            CSeq (split_expression_AsgnVar (X1: var_name) e2) (CAsgnVar X (EBinop op e1 X1))
-        | _, _ =>
-            CAsgnVar X e
+        match e with
+        | EConst c =>
+            []
+        | EVar v =>
+            []
+        | _ =>
+            (expr2coml e (nat2Sname vcnt) (S vcnt)) 
         end
-    | EUnop op e =>
-        CSkip
     | EDeref e =>
-        CSkip
+        match e with
+        | EConst c =>
+            []
+        | EVar v =>
+            []
+        | _ =>
+            (expr2coml e (nat2Sname vcnt) (S vcnt)) 
+        end
     | EAddrOf e =>
-        CSkip
+        match e with
+        | EConst c =>
+            []
+        | EVar v =>
+            []
+        | _ =>
+            (expr2coml e (nat2Sname vcnt) (S vcnt)) 
+        end
     end.
-
-Definition split_expression_AsgnDeref 
-    (e1 : expr)
-    (e2 : expr) :
-    com := 
-    CSkip.
-
-Definition split_expression_If
-    (e : expr)
-    (c1 : com)
-    (c2 : com) :
-    com :=
-        CSkip
-    .
-
-Definition split_expression_While 
-    (e : expr)
-    (c : com) :
-    com := 
-    CSkip.
-
-
-
-
-    
-Fixpoint split_expression
-    (e : expr) :
-    com :=
-    match c with
-    | CSkip =>
-        CSkip
-    | CAsgnVar X e =>
-        split_expression_AsgnVar X e 
-    | CAsgnDeref e1 e2 =>
-        split_expression_AsgnDeref e1 e2
-    | CSeq c1 c2 =>
-        CSeq (split_expression c1) (split_expression c2)
-    | CIf e c1 c2 =>
-        split_expression_If e c1 c2
-    | CWhile e c =>
-        split_expression_While e c
-    end.
-
-Theorem split_expression_refine :
-    forall c : com,
-    [[ (split_expression c) ]] ⊆ [[ c ]].
-Admitted. *)
-
 
 End DntSem_WhileDS.
