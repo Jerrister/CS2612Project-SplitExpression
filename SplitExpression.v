@@ -20,15 +20,10 @@ Local Open Scope sets.
 Module Lang_WhileDS.
 Import Lang_WhileD.
 
-(* 重新定义Binop, Uniop 和 Comp? *)
-Print var_name.
-Print string.
-
-Definition Svar_name : Type := nat.
-
+(* 拆分后的语法 *)
 Inductive CV : Type :=
   | SEConst (n : Z): CV
-  | SEVar (x : Svar_name): CV.
+  | SEVar (x : var_name): CV.
 
 
 Inductive Sexpr : Type :=
@@ -42,9 +37,9 @@ Inductive Sexpr : Type :=
 
 Inductive Scom : Type :=
   | SCSkip: Scom
-  | SCAsgnVar (x: Svar_name) (e: Sexpr): Scom
+  | SCAsgnVar (x: var_name) (e: Sexpr): Scom
   | SCAsgnDeref (cv1 cv2: CV): Scom (* CAsgnDeref (cv1 cv2: CV) (offset: EConst): com *)
-  | SCIf (e: Sexpr) (l1 l2: Scomlist): Scom (* condition 需要时怎么样的形式？ *)
+  | SCIf (pre : Scomlist) (e: Sexpr) (l1 l2: Scomlist): Scom (* condition 需要时怎么样的形式？ *)
   | SCWhile (pre : Scomlist) (e: Sexpr) (body: Scomlist): Scom
 with Scomlist : Type :=
   | nil 
@@ -72,18 +67,6 @@ Fixpoint app (l1: Scomlist) (l2: Scomlist) : Scomlist :=
 
 Notation "x ++ y" := (app x y).
 
-(* Fixpoint nat2Z (n : nat) : Z :=
-    match n with
-    | O => 0
-    | S N => (1 + (nat2Z N))
-    end.
-
-Example test : nat2Z 15%nat = 15.
-Proof.
-    unfold nat2Z.
-    lia.
-Qed. *)
-
 Definition nat_add (a : nat) (b : nat) : nat :=
     Nat.iter a S b.
 
@@ -93,13 +76,84 @@ End Lang_WhileDS.
 Module DntSem_WhileDS.
 Import Lang_WhileDS
        Lang_WhileD
-       DntSem_WhileD2 EDenote CDenote
-       BWFix KTFix Sets_CPO Sets_CL.
+       DntSem_WhileD1
+       EDenote.
 
+(* 拆分后的语义 *)
+Definition Seval_r_cv (cv: CV): EDenote :=
+    match cv with
+    | SEConst n =>
+      const_sem n
+    | SEVar X =>
+      var_sem_r X
+    end.
+
+Definition Seval_l_cv (cv: CV): EDenote :=
+    match cv with
+    | SEConst n =>
+        {| nrm := ∅; err := Sets.full; |}
+    | SEVar X =>
+        var_sem_l X
+    end.
+
+Definition Seval_r (e: Sexpr): EDenote :=
+    match e with
+    | SEConstOrVar cv =>
+        Seval_r_cv cv
+    | SEBinop op cv1 cv2 =>
+        binop_sem op (Seval_r_cv cv1) (Seval_r_cv cv2)
+    | SEUnop op cv1 =>
+        unop_sem op (Seval_r_cv cv1)
+    | SEDeref cv1 =>
+        deref_sem_r (Seval_r_cv cv1)
+    | SEAddrOf cv1 =>
+        Seval_l_cv cv1
+    end.
+
+Definition Seval_l (e: Sexpr): EDenote :=
+    match e with
+    | SEConstOrVar (SEVar X) =>
+        var_sem_l X
+    | SEDeref cv =>
+        Seval_r_cv cv
+    | _ =>
+        {| nrm := ∅; err := Sets.full; |}
+    end.
+
+Import CDenote.
+
+Fixpoint Seval_com (c: Scom): CDenote :=
+    match c with
+    | SCSkip =>
+        skip_sem
+    | SCAsgnVar X e =>
+        asgn_var_sem X (Seval_r e)
+    | SCAsgnDeref cv1 cv2 =>
+        asgn_deref_sem (Seval_r_cv cv1) (Seval_r_cv cv2)
+    | SCIf pre e cl1 cl2 =>
+        seq_sem (Seval_comlist pre) (if_sem (Seval_r e) (Seval_comlist cl1) (Seval_comlist cl2))
+    | SCWhile pre e body =>
+        seq_sem (Seval_comlist pre) (while_sem (Seval_r e) (Seval_comlist body))
+    end
+with Seval_comlist (cl : Scomlist) : CDenote :=
+    match cl with
+    | [] => skip_sem
+    | c :: l => seq_sem (Seval_com c) (Seval_comlist l)
+    end.
+
+End DntSem_WhileDS.
+
+Import DntSem_WhileDS.
+Import DntSem_WhileD1.
+Import Lang_WhileDS.
+Import Lang_WhileD.
+
+
+(* 表达式拆分过程 *)
 Class Names : Type :=
 {
-    name2Sname : var_name -> Svar_name;
-    nat2Sname : nat -> Svar_name
+    name2Sname : var_name -> var_name;
+    nat2Sname : nat -> var_name
 }.
 
 Class NamesProperty1 {NameX : Names} : Prop :=
@@ -145,9 +199,12 @@ Definition genSEVar_n {NameX : Names} (vcnt :nat) : CV :=
 Definition genSECV {NameX : Names} (vcnt :nat) : Sexpr :=
     SEConstOrVar (SEVar (nat2Sname vcnt)).
 
+
+(* 注意：暂时没有考虑短路求值 *)
+
 Fixpoint expr2coml {NameX : Names}
     (e : expr)
-    (RET : Svar_name)
+    (RET : var_name)
     (vcnt : nat) :
     Scomlist :=
     match e with
@@ -220,7 +277,7 @@ Fixpoint expr2coml {NameX : Names}
 
 Definition expr2coml_e {NameX : Names}
     (e : expr)
-    (RET : Svar_name)
+    (RET : var_name)
     (vcnt : nat) :
     Sexpr := 
     match e with
@@ -281,7 +338,7 @@ Definition expr2coml_e {NameX : Names}
 
 Definition expr2coml_l {NameX : Names}
     (e : expr)
-    (RET : Svar_name)
+    (RET : var_name)
     (vcnt : nat) :
     Scomlist := 
     match e with
@@ -342,4 +399,3 @@ Definition expr2coml_l {NameX : Names}
         end
     end.
 
-End DntSem_WhileDS.
