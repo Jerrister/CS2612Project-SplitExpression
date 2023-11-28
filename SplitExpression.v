@@ -36,8 +36,8 @@ Inductive Sexpr : Type :=
 Inductive Scom : Type :=
   | SCSkip: Scom
   | SCAsgnVar (x: var_name) (e: Sexpr): Scom
-  | SCAsgnDeref (cv1 cv2: CV): Scom (* CAsgnDeref (cv1 cv2: CV) (offset: EConst): com *)
-  | SCIf (pre : Scomlist) (e: Sexpr) (l1 l2: Scomlist): Scom (* condition 需要时怎么样的形式？ *)
+  | SCAsgnDeref (cv1 cv2: CV): Scom 
+  | SCIf (pre : Scomlist) (e: Sexpr) (l1 l2: Scomlist): Scom 
   | SCWhile (pre : Scomlist) (e: Sexpr) (body: Scomlist): Scom
 with Scomlist : Type :=
   | nil 
@@ -51,10 +51,17 @@ Notation "[ x , .. , y ]" := (cons x .. (cons y nil) ..).
 (* Check SCSkip :: nil : Scomlist.
 Check [SCSkip, SCSkip] : Scomlist. *)
 
+Definition nat_add (a : nat) (b : nat) : nat :=
+    Nat.iter a S b.
+
 Fixpoint length (l:Scomlist) : nat :=
-  match l with
-  | nil => O
-  | h :: t => S (length t)
+    match l with
+    | nil => O
+    | h :: t => 
+        match h with
+        | SCIf pre e c1 c2 => (nat_add (nat_add (nat_add (length pre) (length c1)) (length c2)) (length t))
+        | SCWhile pre e c => (nat_add (nat_add (length pre) (length c)) (length t))
+        | _ => (S t)
   end.
 
 Fixpoint app (l1: Scomlist) (l2: Scomlist) : Scomlist :=
@@ -66,9 +73,6 @@ Fixpoint app (l1: Scomlist) (l2: Scomlist) : Scomlist :=
 Notation "x ++ y" := (app x y).
 
 End Lang_WhileDS.
-
-Definition nat_add (a : nat) (b : nat) : nat :=
-    Nat.iter a S b.
 
 Module DntSem_WhileDS.
 Import Lang_WhileDS
@@ -118,6 +122,8 @@ Definition Seval_l (e: Sexpr): EDenote :=
     end.
 
 Import CDenote.
+
+(* 在if, while和短路求值的情形可能存在问题 *)
 
 Fixpoint Seval_com (c: Scom): CDenote :=
     match c with
@@ -209,34 +215,45 @@ Fixpoint expr2coml {NameX : Names}
     | EVar x =>
         [(SCAsgnVar RET (SEConstOrVar (genSEVar x)))]
     | EBinop op e1 e2 =>
-        match e1, e2 with
-        | EConst c1, EConst c2 =>
-            [(SCAsgnVar RET (SEBinop op (SEConst c1) (SEConst c2)))]
-        | EConst c, EVar v =>
-            [(SCAsgnVar RET (SEBinop op (SEConst c) (genSEVar v)))]
-        | EVar v, EConst c =>
-            [(SCAsgnVar RET (SEBinop op (genSEVar v) (SEConst c)))]
-        | EVar v1, EVar v2 =>
-            [(SCAsgnVar RET (SEBinop op (genSEVar v1) (genSEVar v2)))]
-        | EConst c, _ =>
-            (expr2coml e2 (nat2Sname vcnt) (S vcnt)) 
-            ++ [(SCAsgnVar RET (SEBinop op (SEConst c) (genSEVar_n vcnt)))]
-        | EVar v, _ =>
-            (expr2coml e2 (nat2Sname vcnt) (S vcnt)) 
-            ++ [(SCAsgnVar RET (SEBinop op (genSEVar v) (genSEVar_n vcnt)))]        
-        | _ , EConst c =>
-            (expr2coml e1 (nat2Sname vcnt) (S vcnt)) 
-            ++ [(SCAsgnVar RET (SEBinop op (genSEVar_n vcnt) (SEConst c)))]
-        | _ , EVar v =>
-            (expr2coml e1 (nat2Sname vcnt) (S vcnt)) 
-            ++ [(SCAsgnVar RET (SEBinop op (genSEVar_n vcnt) (genSEVar v)))]
-        | _, _ =>
-            (expr2coml e1 (nat2Sname vcnt) (S vcnt)) 
-            ++ (expr2coml e2 
-                (nat2Sname (nat_add (S vcnt) (length (expr2coml e1 (nat2Sname vcnt) (S vcnt))))) 
-                (S (nat_add (S vcnt) (length (expr2coml e1 (nat2Sname vcnt) (S vcnt)))))) 
-            ++ [(SCAsgnVar RET (SEBinop op (genSEVar_n vcnt)
-                        (genSEVar_n (nat_add (S vcnt) (length (expr2coml e1 (nat2Sname vcnt) (S vcnt)))))))]
+        match op with
+        | OAnd =>
+            [(SCIf (expr2coml_l e1 (nat2Sname vcnt) (S vcnt)) (expr2coml_e e1 (nat2Sname vcnt) (S vcnt)) 
+                (expr2coml e2 RET (nat_add (S vcnt) (length (expr2coml_l e1 (nat2Sname vcnt) (S vcnt)))))
+                [(SCAsgnVar RET (genSECV vcnt))])]
+        | OOr =>
+            [(SCIf (expr2coml_l e1 (nat2Sname vcnt) (S vcnt)) (expr2coml_e e1 (nat2Sname vcnt) (S vcnt)) 
+                [(SCAsgnVar RET (genSECV vcnt))]
+                (expr2coml e2 RET (nat_add (S vcnt) (length (expr2coml_l e1 (nat2Sname vcnt) (S vcnt))))))]
+        | _ =>
+            match e1, e2 with
+            | EConst c1, EConst c2 =>
+                [(SCAsgnVar RET (SEBinop op (SEConst c1) (SEConst c2)))]
+            | EConst c, EVar v =>
+                [(SCAsgnVar RET (SEBinop op (SEConst c) (genSEVar v)))]
+            | EVar v, EConst c =>
+                [(SCAsgnVar RET (SEBinop op (genSEVar v) (SEConst c)))]
+            | EVar v1, EVar v2 =>
+                [(SCAsgnVar RET (SEBinop op (genSEVar v1) (genSEVar v2)))]
+            | EConst c, _ =>
+                (expr2coml e2 (nat2Sname vcnt) (S vcnt)) 
+                ++ [(SCAsgnVar RET (SEBinop op (SEConst c) (genSEVar_n vcnt)))]
+            | EVar v, _ =>
+                (expr2coml e2 (nat2Sname vcnt) (S vcnt)) 
+                ++ [(SCAsgnVar RET (SEBinop op (genSEVar v) (genSEVar_n vcnt)))]        
+            | _ , EConst c =>
+                (expr2coml e1 (nat2Sname vcnt) (S vcnt)) 
+                ++ [(SCAsgnVar RET (SEBinop op (genSEVar_n vcnt) (SEConst c)))]
+            | _ , EVar v =>
+                (expr2coml e1 (nat2Sname vcnt) (S vcnt)) 
+                ++ [(SCAsgnVar RET (SEBinop op (genSEVar_n vcnt) (genSEVar v)))]
+            | _, _ =>
+                (expr2coml e1 (nat2Sname vcnt) (S vcnt)) 
+                ++ (expr2coml e2 
+                    (nat2Sname (nat_add (S vcnt) (length (expr2coml e1 (nat2Sname vcnt) (S vcnt))))) 
+                    (S (nat_add (S vcnt) (length (expr2coml e1 (nat2Sname vcnt) (S vcnt)))))) 
+                ++ [(SCAsgnVar RET (SEBinop op (genSEVar_n vcnt)
+                            (genSEVar_n (nat_add (S vcnt) (length (expr2coml e1 (nat2Sname vcnt) (S vcnt)))))))]
+            end
         end
     | EUnop op e =>
         match e with
@@ -268,10 +285,8 @@ Fixpoint expr2coml {NameX : Names}
             (expr2coml e (nat2Sname vcnt) (S vcnt)) 
             ++ [(SCAsgnVar RET (SEAddrOf (genSEVar_n vcnt)))]
         end
-    end.
-
-
-Definition expr2coml_e {NameX : Names}
+    end
+with expr2coml_e {NameX : Names}
     (e : expr)
     (RET : var_name)
     (vcnt : nat) :
@@ -330,9 +345,8 @@ Definition expr2coml_e {NameX : Names}
         | _ =>
             SEAddrOf (genSEVar_n vcnt)
         end
-    end.
-
-Definition expr2coml_l {NameX : Names}
+    end
+with expr2coml_l {NameX : Names}
     (e : expr)
     (RET : var_name)
     (vcnt : nat) :
@@ -397,16 +411,58 @@ Definition expr2coml_l {NameX : Names}
 
 (* 程序语句经过表达式拆分变换 *)
 
-Fixpoint com2comlist
-    (c : Scom)
+Fixpoint  com2comlist {NameX : Names}
+    (c : com)
     (vcnt : nat):
     Scomlist :=
-    []
-with comlist2comlist
-    (c : Scomlist)
-    (vcnt : nat):
-    Scomlist :=
-    [].
+    match c with
+    | CSkip =>
+        []
+    | CAsgnVar X e =>
+        (expr2coml e (name2Sname X) vcnt)
+    | CAsgnDeref e1 e2 =>
+        match e1, e2 with
+        | EConst c1, EConst c2 =>
+            [(SCAsgnDeref (SEConst c1) (SEConst c2))]
+        | EConst c, EVar v =>
+            [(SCAsgnDeref (SEConst c) (genSEVar v))]
+        | EVar v, EConst c =>
+            [(SCAsgnDeref (genSEVar v) (SEConst c))]
+        | EVar v1, EVar v2 =>
+            [(SCAsgnDeref (genSEVar v1) (genSEVar v2))]
+        | EConst c, _ =>
+            (expr2coml e2 (nat2Sname vcnt) (S vcnt))
+            ++ [(SCAsgnDeref (SEConst c) (genSEVar_n vcnt))]
+        | EVar v, _ =>
+            (expr2coml e2 (nat2Sname vcnt) (S vcnt))
+            ++ [(SCAsgnDeref (genSEVar v) (genSEVar_n vcnt))]   
+        | _ , EConst c =>
+            (expr2coml e1 (nat2Sname vcnt) (S vcnt))
+            ++ [(SCAsgnDeref (genSEVar_n vcnt) (SEConst c))]
+        | _ , EVar v =>
+            (expr2coml e1 (nat2Sname vcnt) (S vcnt))
+            ++ [(SCAsgnDeref (genSEVar_n vcnt) (genSEVar v))] 
+        | _, _ =>
+            (expr2coml e1 (nat2Sname vcnt) (S vcnt)) 
+            ++ (expr2coml e2 
+                (nat2Sname (nat_add (S vcnt) (length (expr2coml e1 (nat2Sname vcnt) (S vcnt))))) 
+                (S (nat_add (S vcnt) (length (expr2coml e1 (nat2Sname vcnt) (S vcnt)))))) 
+            ++ [(SCAsgnDeref (genSEVar_n vcnt)
+                        (genSEVar_n (nat_add (S vcnt) (length (expr2coml e1 (nat2Sname vcnt) (S vcnt))))))]
+        end
+    | CSeq c1 c2 =>
+        (com2comlist c1 vcnt) ++ (com2comlist c2 (nat_add vcnt (length (com2comlist c1 vcnt))))
+    | CIf e c1 c2 =>
+        [(SCIf (expr2coml_l e (nat2Sname vcnt) (S vcnt)) 
+            (expr2coml_e e (nat2Sname vcnt) (S vcnt)) 
+            (com2comlist c1 (nat_add (S vcnt) (length (expr2coml_l e (nat2Sname vcnt) (S vcnt))))) 
+            (com2comlist c2 (nat_add (nat_add (S vcnt) (length (expr2coml_l e (nat2Sname vcnt) (S vcnt))))
+                (length (com2comlist c1 (nat_add (S vcnt) (length (expr2coml_l e (nat2Sname vcnt) (S vcnt)))))))))]
+    | CWhile e c =>
+        [(SCWhile (expr2coml_l e (nat2Sname vcnt) (S vcnt)) 
+        (expr2coml_e e (nat2Sname vcnt) (S vcnt)) 
+        (com2comlist c (nat_add (S vcnt) (length (expr2coml_l e (nat2Sname vcnt) (S vcnt))))))]
+    end.
 
 
 (* 定义精化关系 *)
