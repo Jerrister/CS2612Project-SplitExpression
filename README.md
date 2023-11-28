@@ -5,6 +5,16 @@ Put SplitExpression.v file under /cs2612-aut2023/pl/ folder can successfully com
 
 
 # Log
+## 1128.v2
+* 完成了com2comlist
+* 更改了length函数以适配SCIf和SCWhile的长度
+* 在expr2coml系列中加入了处理短路求值的模块
+### 存在的问题
+* 正确性不保证
+### 下一步工作
+* 定义精化关系
+* 随时注意可能出现的漏洞
+
 ## 1128
 * 完成了WhileDS语义的定义
 * 完成了split_express的定义
