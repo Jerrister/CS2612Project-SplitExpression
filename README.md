@@ -5,7 +5,19 @@ Put SplitExpression.v file under /cs2612-aut2023/pl/ folder can successfully com
 
 
 # Log
-
+## 1128
+* 完成了WhileDS语义的定义
+* 完成了split_express的定义
+* 修改了Svar_name,改回了var_name
+### 存在的问题
+* 正确性不保证
+* 暂时没有实现短路求值
+### 下一步工作
+* 定义语句的拆分变化
+* 定义精化关系
+* 加入短路求值
+* 注意if和while的正确性
+  
 ## 1127
 * 给comlist添加了重载和方法，实现Nat的加法
 * WhileDS语言中的变量名：设计了nat和string分别到Svar_name的映射及其性质
