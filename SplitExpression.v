@@ -33,8 +33,6 @@ Inductive Sexpr : Type :=
   | SEDeref (cv: CV): Sexpr
   | SEAddrOf (cv: CV): Sexpr.
 
-(** 程序语句的语法树不变。*)
-
 Inductive Scom : Type :=
   | SCSkip: Scom
   | SCAsgnVar (x: var_name) (e: Sexpr): Scom
@@ -50,8 +48,8 @@ Notation "[]" := nil.
 Notation "[ x , .. , y ]" := (cons x .. (cons y nil) ..).
 
 
-Check SCSkip :: nil : Scomlist.
-Check [SCSkip, SCSkip] : Scomlist.
+(* Check SCSkip :: nil : Scomlist.
+Check [SCSkip, SCSkip] : Scomlist. *)
 
 Fixpoint length (l:Scomlist) : nat :=
   match l with
@@ -67,11 +65,10 @@ Fixpoint app (l1: Scomlist) (l2: Scomlist) : Scomlist :=
 
 Notation "x ++ y" := (app x y).
 
-Definition nat_add (a : nat) (b : nat) : nat :=
-    Nat.iter a S b.
-
 End Lang_WhileDS.
 
+Definition nat_add (a : nat) (b : nat) : nat :=
+    Nat.iter a S b.
 
 Module DntSem_WhileDS.
 Import Lang_WhileDS
@@ -187,11 +184,10 @@ Proof.
     tauto.
 Qed.
 
-Definition genSEConst (n : Z) : CV :=
-    (SEConst n).
+
 
 Definition genSEVar {NameX : Names} (x : var_name) : CV:=
-    (SEVar (name2Sname x)).
+    SEVar (name2Sname x).
 
 Definition genSEVar_n {NameX : Names} (vcnt :nat) : CV :=
     SEVar (nat2Sname vcnt).
@@ -209,7 +205,7 @@ Fixpoint expr2coml {NameX : Names}
     Scomlist :=
     match e with
     | EConst n =>
-        [(SCAsgnVar RET (SEConstOrVar (genSEConst n)))]
+        [(SCAsgnVar RET (SEConstOrVar (SEConst n)))]
     | EVar x =>
         [(SCAsgnVar RET (SEConstOrVar (genSEVar x)))]
     | EBinop op e1 e2 =>
@@ -237,10 +233,10 @@ Fixpoint expr2coml {NameX : Names}
         | _, _ =>
             (expr2coml e1 (nat2Sname vcnt) (S vcnt)) 
             ++ (expr2coml e2 
-                (nat2Sname (nat_add vcnt (length (expr2coml e1 (nat2Sname vcnt) (S vcnt))))) 
-                (S (nat_add vcnt (length (expr2coml e1 (nat2Sname vcnt) (S vcnt)))))) 
+                (nat2Sname (nat_add (S vcnt) (length (expr2coml e1 (nat2Sname vcnt) (S vcnt))))) 
+                (S (nat_add (S vcnt) (length (expr2coml e1 (nat2Sname vcnt) (S vcnt)))))) 
             ++ [(SCAsgnVar RET (SEBinop op (genSEVar_n vcnt)
-                        (genSEVar_n (nat_add vcnt (length (expr2coml e1 (nat2Sname vcnt) (S vcnt)))))))]
+                        (genSEVar_n (nat_add (S vcnt) (length (expr2coml e1 (nat2Sname vcnt) (S vcnt)))))))]
         end
     | EUnop op e =>
         match e with
@@ -282,7 +278,7 @@ Definition expr2coml_e {NameX : Names}
     Sexpr := 
     match e with
     | EConst n =>
-        SEConstOrVar (genSEConst n)
+        SEConstOrVar (SEConst n)
     | EVar x =>
         SEConstOrVar (genSEVar x)
     | EBinop op e1 e2 =>
@@ -305,7 +301,7 @@ Definition expr2coml_e {NameX : Names}
             SEBinop op (genSEVar_n vcnt) (genSEVar v)
         | _, _ =>
             SEBinop op (genSEVar_n vcnt)
-            (genSEVar_n (nat_add vcnt (length (expr2coml e1 (nat2Sname vcnt) (S vcnt)))))
+            (genSEVar_n (nat_add (S vcnt) (length (expr2coml e1 (nat2Sname vcnt) (S vcnt)))))
         end
     | EUnop op e =>
         match e with
@@ -367,8 +363,8 @@ Definition expr2coml_l {NameX : Names}
         | _, _ =>
             (expr2coml e1 (nat2Sname vcnt) (S vcnt)) 
             ++ (expr2coml e2 
-                (nat2Sname (nat_add vcnt (length (expr2coml e1 (nat2Sname vcnt) (S vcnt))))) 
-                (S (nat_add vcnt (length (expr2coml e1 (nat2Sname vcnt) (S vcnt)))))) 
+                (nat2Sname (nat_add (S vcnt) (length (expr2coml e1 (nat2Sname vcnt) (S vcnt))))) 
+                (S (nat_add (S vcnt) (length (expr2coml e1 (nat2Sname vcnt) (S vcnt)))))) 
         end
     | EUnop op e =>
         match e with
@@ -399,3 +395,20 @@ Definition expr2coml_l {NameX : Names}
         end
     end.
 
+(* 程序语句经过表达式拆分变换 *)
+
+Fixpoint com2comlist
+    (c : Scom)
+    (vcnt : nat):
+    Scomlist :=
+    []
+with comlist2comlist
+    (c : Scomlist)
+    (vcnt : nat):
+    Scomlist :=
+    [].
+
+
+(* 定义精化关系 *)
+
+(* 证明精化关系 *)
