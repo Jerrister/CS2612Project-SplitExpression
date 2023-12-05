@@ -11,8 +11,8 @@ Require Import compcert.lib.Integers.
 Require Import PL.SyntaxInCoq.
 Require Import PL.DenotationalSemantics. Import BWFix Sets_CPO.
 Require Import PL.PracticalDenotations. Import KTFix Sets_CL.
+Require Import PL.EquivAndRefine.
 Import Lang_While DntSem_While1 DntSem_While2.
-Import EDenote CDenote.
 Local Open Scope string.
 Local Open Scope Z.
 Local Open Scope sets.
@@ -61,8 +61,9 @@ Fixpoint length (l:Scomlist) : nat :=
         match h with
         | SCIf pre e c1 c2 => (nat_add (nat_add (nat_add (length pre) (length c1)) (length c2)) (length t))
         | SCWhile pre e c => (nat_add (nat_add (length pre) (length c)) (length t))
-        | _ => (S t)
-  end.
+        | _ => (S (length t))
+        end
+    end.
 
 Fixpoint app (l1: Scomlist) (l2: Scomlist) : Scomlist :=
     match l1 with
@@ -146,51 +147,34 @@ with Seval_comlist (cl : Scomlist) : CDenote :=
 
 End DntSem_WhileDS.
 
-Import DntSem_WhileDS.
-Import DntSem_WhileD1.
-Import Lang_WhileDS.
-Import Lang_WhileD.
 
+Import DntSem_WhileD1.
+Import Lang_WhileD.
+Import DntSem_WhileDS.
+Import Lang_WhileDS.
+Import CDenote.
+Import EDenote.
+
+Definition getval (s : state) (x : var_name): option val :=
+    s.(mem) (s.(env) x).
 
 (* 表达式拆分过程 *)
 Class Names : Type :=
 {
     name2Sname : var_name -> var_name;
-    nat2Sname : nat -> var_name
+    nat2Sname : nat -> var_name;
+    name_trans : state -> state;
 }.
 
-Class NamesProperty1 {NameX : Names} : Prop :=
+Class NamesProperty {NameX : Names} : Prop :=
 {
     trans_prop1 : forall (x : var_name) (y : var_name) , (x = y) <-> (name2Sname x = name2Sname y);
     trans_prop2 : forall (x : nat) (y : nat) , (x = y) <-> (nat2Sname x = nat2Sname y);
-    trans_prop3 : forall (x : var_name) (y : nat) , name2Sname x <> nat2Sname y
+    trans_prop3 : forall (x : var_name) (y : nat) , name2Sname x <> nat2Sname y;
+    trans_prop4 : forall (s : state), 
+        (forall (x : var_name), s.(env) x = (name_trans s).(env) (name2Sname x))
+        /\ (forall (a : int64), s.(mem) a = (name_trans s).(mem) a);
 }.
-
-Lemma name_trans_prop1 {NameX: Names} {NPX : NamesProperty1}:
-    forall (x : var_name) (y : var_name) , (x = y) <-> (name2Sname x = name2Sname y).
-Proof.
-    intros.
-    pose proof trans_prop1 x y.
-    tauto.
-Qed.
-
-Lemma name_trans_prop2 {NameX: Names} {NPX : NamesProperty1}:
-    forall (x : nat) (y : nat) , (x = y) <-> (nat2Sname x = nat2Sname y).
-Proof.
-    intros.
-    pose proof trans_prop2 x y.
-    tauto.
-Qed.
-
-Lemma name_trans_prop3 {NameX: Names} {NPX : NamesProperty1}:
-    forall (x : var_name) (y : nat) , (name2Sname x <> nat2Sname y).
-Proof.
-    intros.
-    pose proof trans_prop3 x y.
-    tauto.
-Qed.
-
-
 
 Definition genSEVar {NameX : Names} (x : var_name) : CV:=
     SEVar (name2Sname x).
@@ -200,9 +184,6 @@ Definition genSEVar_n {NameX : Names} (vcnt :nat) : CV :=
 
 Definition genSECV {NameX : Names} (vcnt :nat) : Sexpr :=
     SEConstOrVar (SEVar (nat2Sname vcnt)).
-
-
-(* 注意：暂时没有考虑短路求值 *)
 
 Fixpoint expr2coml {NameX : Names}
     (e : expr)
@@ -297,26 +278,33 @@ with expr2coml_e {NameX : Names}
     | EVar x =>
         SEConstOrVar (genSEVar x)
     | EBinop op e1 e2 =>
-        match e1, e2 with
-        | EConst c1, EConst c2 =>
-            SEBinop op (SEConst c1) (SEConst c2)
-        | EConst c, EVar v =>
-            SEBinop op (SEConst c) (genSEVar v)
-        | EVar v, EConst c =>
-            SEBinop op (genSEVar v) (SEConst c)
-        | EVar v1, EVar v2 =>
-            SEBinop op (genSEVar v1) (genSEVar v2)
-        | EConst c, _ =>
-            SEBinop op (SEConst c) (genSEVar_n vcnt)
-        | EVar v, _ =>
-            SEBinop op (genSEVar v) (genSEVar_n vcnt)   
-        | _ , EConst c =>
-            SEBinop op (genSEVar_n vcnt) (SEConst c)
-        | _ , EVar v =>
-            SEBinop op (genSEVar_n vcnt) (genSEVar v)
-        | _, _ =>
-            SEBinop op (genSEVar_n vcnt)
-            (genSEVar_n (nat_add (S vcnt) (length (expr2coml e1 (nat2Sname vcnt) (S vcnt)))))
+        match op with
+        | OAnd =>
+            SEConstOrVar (SEVar RET)
+        | OOr =>
+            SEConstOrVar (SEVar RET)
+        | _ =>
+            match e1, e2 with
+            | EConst c1, EConst c2 =>
+                SEBinop op (SEConst c1) (SEConst c2)
+            | EConst c, EVar v =>
+                SEBinop op (SEConst c) (genSEVar v)
+            | EVar v, EConst c =>
+                SEBinop op (genSEVar v) (SEConst c)
+            | EVar v1, EVar v2 =>
+                SEBinop op (genSEVar v1) (genSEVar v2)
+            | EConst c, _ =>
+                SEBinop op (SEConst c) (genSEVar_n vcnt)
+            | EVar v, _ =>
+                SEBinop op (genSEVar v) (genSEVar_n vcnt)   
+            | _ , EConst c =>
+                SEBinop op (genSEVar_n vcnt) (SEConst c)
+            | _ , EVar v =>
+                SEBinop op (genSEVar_n vcnt) (genSEVar v)
+            | _, _ =>
+                SEBinop op (genSEVar_n vcnt)
+                (genSEVar_n (nat_add (S vcnt) (length (expr2coml e1 (nat2Sname vcnt) (S vcnt)))))
+            end
         end
     | EUnop op e =>
         match e with
@@ -357,28 +345,39 @@ with expr2coml_l {NameX : Names}
     | EVar x =>
         []
     | EBinop op e1 e2 =>
-        match e1, e2 with
-        | EConst c1, EConst c2 =>
-            []
-        | EConst c, EVar v =>
-            []
-        | EVar v, EConst c =>
-            []
-        | EVar v1, EVar v2 =>
-            []
-        | EConst c, _ =>
-            (expr2coml e2 (nat2Sname vcnt) (S vcnt)) 
-        | EVar v, _ =>
-            (expr2coml e2 (nat2Sname vcnt) (S vcnt))      
-        | _ , EConst c =>
-            (expr2coml e1 (nat2Sname vcnt) (S vcnt)) 
-        | _ , EVar v =>
-            (expr2coml e1 (nat2Sname vcnt) (S vcnt)) 
-        | _, _ =>
-            (expr2coml e1 (nat2Sname vcnt) (S vcnt)) 
-            ++ (expr2coml e2 
-                (nat2Sname (nat_add (S vcnt) (length (expr2coml e1 (nat2Sname vcnt) (S vcnt))))) 
-                (S (nat_add (S vcnt) (length (expr2coml e1 (nat2Sname vcnt) (S vcnt)))))) 
+    match op with
+        | OAnd =>
+            [(SCIf (expr2coml_l e1 (nat2Sname vcnt) (S vcnt)) (expr2coml_e e1 (nat2Sname vcnt) (S vcnt)) 
+                (expr2coml e2 RET (nat_add (S vcnt) (length (expr2coml_l e1 (nat2Sname vcnt) (S vcnt)))))
+                [(SCAsgnVar RET (genSECV vcnt))])]
+        | OOr =>
+            [(SCIf (expr2coml_l e1 (nat2Sname vcnt) (S vcnt)) (expr2coml_e e1 (nat2Sname vcnt) (S vcnt)) 
+                [(SCAsgnVar RET (genSECV vcnt))]
+                (expr2coml e2 RET (nat_add (S vcnt) (length (expr2coml_l e1 (nat2Sname vcnt) (S vcnt))))))]
+        | _ =>
+            match e1, e2 with
+            | EConst c1, EConst c2 =>
+                []
+            | EConst c, EVar v =>
+                []
+            | EVar v, EConst c =>
+                []
+            | EVar v1, EVar v2 =>
+                []
+            | EConst c, _ =>
+                (expr2coml e2 (nat2Sname vcnt) (S vcnt)) 
+            | EVar v, _ =>
+                (expr2coml e2 (nat2Sname vcnt) (S vcnt))      
+            | _ , EConst c =>
+                (expr2coml e1 (nat2Sname vcnt) (S vcnt)) 
+            | _ , EVar v =>
+                (expr2coml e1 (nat2Sname vcnt) (S vcnt)) 
+            | _, _ =>
+                (expr2coml e1 (nat2Sname vcnt) (S vcnt)) 
+                ++ (expr2coml e2 
+                    (nat2Sname (nat_add (S vcnt) (length (expr2coml e1 (nat2Sname vcnt) (S vcnt))))) 
+                    (S (nat_add (S vcnt) (length (expr2coml e1 (nat2Sname vcnt) (S vcnt)))))) 
+            end
         end
     | EUnop op e =>
         match e with
@@ -467,4 +466,148 @@ Fixpoint  com2comlist {NameX : Names}
 
 (* 定义精化关系 *)
 
+Lemma name_trans_prop_env {NameX : Names} {NPX : NamesProperty} :
+    forall (s1 s2: state) (x : var_name), 
+    name_trans s1 = s2 ->
+    s2.(env) (name2Sname x) = s1.(env) x.
+Proof.
+    intros.
+    pose proof trans_prop4 s1.
+    destruct H0.
+    pose proof H0 x.
+    rewrite H2.
+    rewrite H.
+    tauto.
+Qed.
+
+Lemma name_trans_prop_mem {NameX : Names} {NPX : NamesProperty} :
+    forall (s1 s2: state) (a : int64), 
+    name_trans s1 = s2 ->
+    s2.(mem) a = s1.(mem) a.
+Proof.
+    intros.
+    pose proof trans_prop4 s1.
+    destruct H0.
+    pose proof H1 a.
+    rewrite H2.
+    rewrite H.
+    tauto.
+Qed.
+
+
+
+Record Serefine {NameX : Names} (cl : Scomlist) (se : Sexpr) (e : expr): Prop := {
+    nrm_Serefine:
+    forall (s1 s2 : state) (x : var_name),
+        (Seval_comlist cl).(nrm) (name_trans s1) s2 ->
+        (((Seval_l se).(nrm) s2 ⊆ ((eval_l e).(nrm) ∪ ((eval_l e).(err) × int64)) s1)
+        /\ ((Seval_r se).(nrm) s2 ⊆ ((eval_r e).(nrm) ∪ ((eval_r e).(err) × int64)) s1));
+    err_Serefine:
+        (Seval_comlist cl).(err) ⊆ (eval_l e).(err) /\
+        (Seval_comlist cl).(err) ⊆ (eval_r e).(err) /\
+        (forall (s1 s2 : state), (Seval_comlist cl).(nrm) (name_trans s1) s2 ->
+            (Seval_l se).(err) s2 ⊆ ((eval_l e).(err) s1
+            /\ (Seval_r se).(err) s2 ⊆ ((eval_r e).(err) s1)));
+    }.
+
 (* 证明精化关系 *)
+Theorem Split_expr_erefine {NameX : Names} {NPX : NamesProperty}: 
+    forall (e : expr) (RET : var_name) (vcnt: nat), 
+    Serefine (expr2coml_l e RET vcnt) (expr2coml_e e RET vcnt) e.
+Proof.
+    intros.
+    split.
+    + induction e; sets_unfold.
+      - simpl; split; intros.
+        -- right.
+           tauto.
+        -- intros.
+           left.
+           tauto.
+      - simpl; split;
+        intros; unfold expr2coml_l, Seval_comlist in H;
+        unfold skip_sem in H;
+        unfold CDenote.nrm in H;
+        sets_unfold in H.
+        --  left.
+            pose proof name_trans_prop_env s1 s2 x H.
+            rewrite <- H0.
+            rewrite <- H1.
+            tauto.
+        --  left.
+            unfold deref_sem_nrm.
+            unfold deref_sem_nrm in H0.
+            destruct H0.
+            destruct H0.
+            exists x1.
+            split.
+            pose proof name_trans_prop_env s1 s2 x H.
+            rewrite <- H2.
+            apply H0.
+            pose proof name_trans_prop_mem s1 s2 x1 H.
+            rewrite <- H2.
+            apply H1.
+      - split.
+        --  intros.
+            simpl.
+            sets_unfold.
+            tauto.
+        --  intros. 
+            simpl.
+            admit.
+      - split.
+        --  intros.
+            simpl.
+            sets_unfold.
+            tauto.
+        --  intros.
+            left.
+            simpl.
+            unfold Seval_r in H0.
+            unfold expr2coml_e in H0.
+            induction e.
+            --- unfold Seval_r_cv in H0.
+                simpl.
+                destruct op.
+                * simpl.
+                  unfold not_sem_nrm.
+                  unfold unop_sem, not_sem, not_sem_nrm, const_sem, EDenote.nrm in H0.
+                  destruct H0.
+                  exists x0.
+                  tauto.
+                * simpl.
+                  unfold neg_sem_nrm.
+                  unfold unop_sem, neg_sem, neg_sem_nrm, const_sem, EDenote.nrm in H0.
+                  destruct H0.
+                  exists x0.
+                  tauto.
+            --- unfold genSEVar, Seval_r_cv in H0.
+                simpl.
+                destruct op.
+                * simpl.
+                  unfold not_sem_nrm.
+                  unfold unop_sem, not_sem, not_sem_nrm, var_sem_r, EDenote.nrm in H0.
+                  destruct H0.
+                  exists x0.
+                  tauto.
+                * simpl.
+                  unfold neg_sem_nrm.
+                  unfold unop_sem, neg_sem, neg_sem_nrm, var_sem_r, EDenote.nrm in H0.
+                  destruct H0.
+                  exists x0.
+                  tauto.
+
+
+               
+
+
+Qed.
+
+
+
+Record Screfine (cl : Scomlist) (c : com): Prop := {
+    nrm_crefine:
+        (Seval_comlist cl).(nrm) ⊆ (eval_com c).(nrm) ∪ ((eval_com c).(err) × state);
+    err_crefine:
+        (Seval_comlist cl).(err) ⊆ (eval_com c).(err);
+}.
