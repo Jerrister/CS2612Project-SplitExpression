@@ -494,6 +494,62 @@ Proof.
     tauto.
 Qed.
 
+Definition Serefine_nrm_l_1 {NameX : Names} (cl : Scomlist) (se : Sexpr) (e : expr): Prop :=
+    forall (s1 s2 : state) (x : var_name),
+
+        (Seval_comlist cl).(nrm) (name_trans s1) s2 ->
+        (Seval_l se).(nrm) s2 ⊆ ((eval_l e).(nrm) ∪ ((eval_l e).(err) × int64)) s1.
+
+Lemma Split_Serefine_nrm_l_1 {NameX : Names} {NPX : NamesProperty}:
+    forall (e : expr) (RET : var_name) (vcnt : nat), 
+    Serefine_nrm_l_1 (expr2coml_l e RET vcnt) (expr2coml_e e RET vcnt) e.
+Proof.
+    unfold Serefine_nrm_l_1.
+    induction e.
+    + intros.
+      simpl.
+      sets_unfold.
+      right.
+      tauto.
+    + intros.
+      simpl.
+      unfold Seval_comlist, expr2coml_l, skip_sem, CDenote.nrm in H.
+      sets_unfold in H.
+      pose proof name_trans_prop_env s1 s2 x H.
+      rewrite H0.
+      sets_unfold.
+      intros.
+      left.
+      tauto.
+    + intros; sets_unfold; intros; simpl; sets_unfold; tauto.
+    + intros; sets_unfold; intros; simpl; sets_unfold; tauto.
+    + intros.
+      simpl.
+      sets_unfold.
+      intros a.
+      destruct e; simpl; intros.
+      - tauto.
+      - left.
+        unfold Seval_comlist, expr2coml_l, skip_sem, CDenote.nrm in H.
+        sets_unfold in H.
+        pose proof name_trans_prop_env s1 s2 x0 H.
+        unfold deref_sem_nrm.
+        unfold deref_sem_nrm in H0; destruct H0.
+        exists x1.
+        pose proof name_trans_prop_mem s1 s2 x1 H.
+        rewrite <- H1.
+        rewrite <- H2.
+        tauto.
+      - unfold deref_sem_nrm in H0.
+        destruct H0.
+        destruct H0.
+        admit. (* 这里需要用到：从name_tran s1 到 s2，程序状态如何变化 *)
+      - admit.
+      - admit.
+      - admit.
+    + intros; sets_unfold; intros; simpl; sets_unfold; tauto.
+Admitted.
+
 
 
 Record Serefine {NameX : Names} (cl : Scomlist) (se : Sexpr) (e : expr): Prop := {
