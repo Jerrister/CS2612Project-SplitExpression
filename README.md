@@ -5,6 +5,10 @@ Put SplitExpression.v file under /cs2612-aut2023/pl/ folder can successfully com
 
 
 # Log
+## 1205
+* 尝试定义了精化关系
+* 但是证明起来很困难
+  
 ## 1128.v2
 * 完成了com2comlist
 * 更改了length函数以适配SCIf和SCWhile的长度
