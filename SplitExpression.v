@@ -312,8 +312,8 @@ Fixpoint ex2pre {NameX : Names}
         | EVar v =>
             []
         | _ =>
-            (ex2pre e (S vcnt)) 
-            ++ [(SCAsgnVar (nat2Sname vcnt) (ex2se e (S vcnt)))]
+            (ex2pre e1 (S vcnt)) 
+            ++ [(SCAsgnVar (nat2Sname vcnt) (ex2se e1 (S vcnt)))]
         end
     | EDeref e =>
         match e with
@@ -442,18 +442,39 @@ Proof.
     destruct e; simpl; reflexivity.
 Qed.
 
+(* Fixpoint Split_prop {NameX : Names} (e : expr) (vcnt : nat): 
+    forall (s1 s2 : state),
+        (Seval_comlist cl).(nrm) (name_trans s1) s2 ->
+        match e with 
+        | EConst c => (Seval_l se).(nrm) s2 ⊆ ((eval_l e).(nrm) ∪ ((eval_l e).(err) × int64)) s1
+        | Evar x => (Seval_l se).(nrm) s2 ⊆ ((eval_l e).(nrm) ∪ ((eval_l e).(err) × int64)) s1
+        | EBinop op e1 e2 =>
+            Split_prop e1 _ -> Split_prop e2 _ -> Split_prop e _
+Proof.
+    
+Qed.
+
 Lemma Split_prop: 
     forall (e : expr) (vcnt : nat),
     match e with 
     | EConst c => .
 Proof.
     
+Qed. *)
+
+Lemma midstate_deref {NameX : Names}: forall (s1 : state) (s3 : state) (e : expr) (vcnt : nat),
+    (Seval_comlist (ex2pre (EDeref e) vcnt)).(nrm) s1 s3
+    -> exists (s2 : state), 
+    (Seval_comlist (ex2pre e (S vcnt))).(nrm) s1 s2
+    /\ (Seval_comlist 
+        [(SCAsgnVar (nat2Sname vcnt) (ex2se e (S vcnt)))]).(nrm) s2 s3.
+Proof.
+    
 Qed.
 
 
 Definition Serefine_nrm_l {NameX : Names} (cl : Scomlist) (se : Sexpr) (e : expr): Prop :=
-    forall (s1 s2 : state) (x : var_name),
-
+    forall (s1 s2 : state),
         (Seval_comlist cl).(nrm) (name_trans s1) s2 ->
         (Seval_l se).(nrm) s2 ⊆ ((eval_l e).(nrm) ∪ ((eval_l e).(err) × int64)) s1.
 
@@ -482,7 +503,12 @@ Proof.
       tauto.
     + intros; sets_unfold; intros; simpl; sets_unfold; tauto.
     + intros; sets_unfold; intros; simpl; sets_unfold; tauto.
-    + intros.
+    + intros vcnt.
+      (* pose proof ex2pre_deref vcnt e.
+      destruct e; rewrite H; intros.
+      - sets_unfold in H0. *)
+      intros s1 s3.
+      intros.
       simpl.
       sets_unfold.
       intros a.
@@ -492,11 +518,11 @@ Proof.
       - left.
         unfold Seval_comlist, ex2pre, skip_sem, CDenote.nrm in H.
         sets_unfold in H.
-        pose proof name_trans_prop_env s1 s2 x0 H.
+        pose proof name_trans_prop_env s1 s2 x H.
         unfold deref_sem_nrm.
         unfold deref_sem_nrm in H1. destruct H1.
-        exists x1.
-        pose proof name_trans_prop_mem s1 s2 x1 H.
+        exists x0.
+        pose proof name_trans_prop_mem s1 s2 x0 H.
         rewrite <- H2.
         rewrite <- H3.
         tauto.
