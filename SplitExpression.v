@@ -185,6 +185,158 @@ Definition genSEVar_n {NameX : Names} (vcnt :nat) : CV :=
 Definition genSECV {NameX : Names} (vcnt :nat) : Sexpr :=
     SEConstOrVar (SEVar (nat2Sname vcnt)).
 
+
+Definition ex2se {NameX : Names}
+    (e : expr)
+    (vcnt : nat) :
+    Sexpr := 
+    match e with
+    | EConst n =>
+        SEConstOrVar (SEConst n)
+    | EVar x =>
+        SEConstOrVar (genSEVar x)
+    | EBinop op e1 e2 =>
+        match op with
+        | OAnd =>
+            genSECV vcnt
+        | OOr =>
+            genSECV vcnt
+        | _ =>
+            match e1, e2 with
+            | EConst c1, EConst c2 =>
+                SEBinop op (SEConst c1) (SEConst c2)
+            | EConst c, EVar v =>
+                SEBinop op (SEConst c) (genSEVar v)
+            | EVar v, EConst c =>
+                SEBinop op (genSEVar v) (SEConst c)
+            | EVar v1, EVar v2 =>
+                SEBinop op (genSEVar v1) (genSEVar v2)
+            | EConst c, _ =>
+                SEBinop op (SEConst c) (genSEVar_n vcnt)
+            | EVar v, _ =>
+                SEBinop op (genSEVar v) (genSEVar_n vcnt)   
+            | _ , EConst c =>
+                SEBinop op (genSEVar_n vcnt) (SEConst c)
+            | _ , EVar v =>
+                SEBinop op (genSEVar_n vcnt) (genSEVar v)
+            | _, _ =>
+                SEBinop op (genSEVar_n vcnt) (genSEVar_n (S vcnt))
+            end
+        end
+    | EUnop op e =>
+        match e with
+        | EConst c =>
+            SEUnop op (SEConst c)
+        | EVar v =>
+            SEUnop op (genSEVar v)
+        | _ =>
+            SEUnop op (genSEVar_n vcnt)
+        end
+    | EDeref e =>
+        match e with
+        | EConst c =>
+            SEDeref (SEConst c)
+        | EVar v =>
+            SEDeref (genSEVar v)
+        | _ =>
+            SEDeref (genSEVar_n vcnt)
+        end
+    | EAddrOf e =>
+        match e with
+        | EConst c =>
+            SEAddrOf (SEConst c)
+        | EVar v =>
+            SEAddrOf (genSEVar v)
+        | _ =>
+            SEAddrOf (genSEVar_n vcnt)
+        end
+    end.
+
+Fixpoint ex2pre {NameX : Names}
+    (e : expr)
+    (vcnt : nat) :
+    Scomlist := 
+    match e with
+    | EConst n =>
+        []
+    | EVar x =>
+        []
+    | EBinop op e1 e2 =>
+    match op with
+        | OAnd =>
+            [(SCIf (ex2pre e1 (S vcnt)) 
+                (ex2se e1 (S vcnt)) 
+                ((ex2pre e2 (nat_add (S vcnt) (length (ex2pre e1 (S vcnt)))))
+                ++ [(SCAsgnVar (nat2Sname vcnt) (ex2se e2 (nat_add (S vcnt) (length (ex2pre e1 (S vcnt))))))])
+                [(SCAsgnVar (nat2Sname vcnt) (ex2se e1 (S vcnt)))])]
+        | OOr =>
+            [(SCIf (ex2pre e1 (S vcnt)) 
+                (ex2se e1 (S vcnt)) 
+                [(SCAsgnVar (nat2Sname vcnt) (ex2se e1 (S vcnt)))]
+                ((ex2pre e2 (nat_add (S vcnt) (length (ex2pre e1 (S vcnt)))))
+                ++ [(SCAsgnVar (nat2Sname vcnt) (ex2se e2 (nat_add (S vcnt) (length (ex2pre e1 (S vcnt))))))]))]
+        | _ =>
+            match e1, e2 with
+            | EConst c1, EConst c2 =>
+                []
+            | EConst c, EVar v =>
+                []
+            | EVar v, EConst c =>
+                []
+            | EVar v1, EVar v2 =>
+                []
+            | EConst c, _ =>
+                (ex2pre e2 (S vcnt)) 
+                ++ [(SCAsgnVar (nat2Sname vcnt) (ex2se e2 (S vcnt)))]
+            | EVar v, _ =>
+                (ex2pre e2 (S vcnt)) 
+                ++ [(SCAsgnVar (nat2Sname vcnt) (ex2se e2 (S vcnt)))]
+            | _ , EConst c =>
+                (ex2pre e1 (S vcnt)) 
+                ++ [(SCAsgnVar (nat2Sname vcnt) (ex2se e1 (S vcnt)))]
+            | _ , EVar v =>
+                (ex2pre e1 (S vcnt)) 
+                ++ [(SCAsgnVar (nat2Sname vcnt) (ex2se e1 (S vcnt)))]
+            | _, _ =>
+                (ex2pre e1 (S (S vcnt))) 
+                ++ (ex2pre e2 (S (nat_add (S vcnt) (length (ex2pre e1 (S (S vcnt)))))))
+                ++ [(SCAsgnVar (nat2Sname vcnt) (ex2se e1 (S vcnt)))] 
+                ++ [(SCAsgnVar (nat2Sname (S vcnt)) 
+                    (ex2se e2 (S (nat_add (S vcnt) (length (ex2pre e1 (S (S vcnt))))))))]
+            end
+        end
+    | EUnop op e =>
+        match e with
+        | EConst c =>
+            []
+        | EVar v =>
+            []
+        | _ =>
+            (ex2pre e (S vcnt)) 
+            ++ [(SCAsgnVar (nat2Sname vcnt) (ex2se e (S vcnt)))]
+        end
+    | EDeref e =>
+        match e with
+        | EConst c =>
+            []
+        | EVar v =>
+            []
+        | _ =>
+            (ex2pre e (S vcnt)) 
+            ++ [(SCAsgnVar (nat2Sname vcnt) (ex2se e (S vcnt)))] 
+        end
+    | EAddrOf e =>
+        match e with
+        | EConst c =>
+            []
+        | EVar v =>
+            []
+        | _ =>
+            (ex2pre e (S vcnt)) 
+            ++ [(SCAsgnVar (nat2Sname vcnt) (ex2se e (S vcnt)))]
+        end
+    end.
+    
 Fixpoint expr2coml {NameX : Names}
     (e : expr)
     (RET : var_name)
@@ -494,17 +646,32 @@ Proof.
     tauto.
 Qed.
 
-Definition Serefine_nrm_l_1 {NameX : Names} (cl : Scomlist) (se : Sexpr) (e : expr): Prop :=
+Lemma expr2coml_l_deref {NameX : Names}:
+    forall (e : expr) (RET : var_name) (vcnt : nat), 
+    (expr2coml_l (EDeref e) RET vcnt) = (expr2coml e (nat2Sname vcnt) (S vcnt)).
+Proof.
+    intros.
+    unfold expr2coml_l, expr2coml.
+    simpl.
+    reflexivity.
+Qed.
+
+
+
+
+Definition Serefine_nrm_l {NameX : Names} (cl : Scomlist) (se : Sexpr) (e : expr): Prop :=
     forall (s1 s2 : state) (x : var_name),
 
         (Seval_comlist cl).(nrm) (name_trans s1) s2 ->
         (Seval_l se).(nrm) s2 ⊆ ((eval_l e).(nrm) ∪ ((eval_l e).(err) × int64)) s1.
 
-Lemma Split_Serefine_nrm_l_1 {NameX : Names} {NPX : NamesProperty}:
+Print expr.
+
+Lemma Split_Serefine_nrm_l {NameX : Names} {NPX : NamesProperty}:
     forall (e : expr) (RET : var_name) (vcnt : nat), 
-    Serefine_nrm_l_1 (expr2coml_l e RET vcnt) (expr2coml_e e RET vcnt) e.
+    Serefine_nrm_l (expr2coml_l e RET vcnt) (expr2coml_e e RET vcnt) e.
 Proof.
-    unfold Serefine_nrm_l_1.
+    unfold Serefine_nrm_l.
     induction e.
     + intros.
       simpl.
