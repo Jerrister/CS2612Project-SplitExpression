@@ -5,6 +5,11 @@ Put SplitExpression.v file under /cs2612-aut2023/pl/ folder can successfully com
 
 
 # Log
+## 1208
+* 不能在Coq里面死磕，得列举大量的定义、引理，然后理清他们的关系，找到正确的证明顺序
+
+
+
 ## 1206
 * 重新描述了表达式拆分的过程，变成了ex2pre和ex2cl两个函数，否则unfold的时候有时候会卡死（实现应该是没有问题的）
 * 考虑搞一个更好递归的性质，现在这个递归不起来
