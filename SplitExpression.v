@@ -11,11 +11,18 @@ Require Import compcert.lib.Integers.
 Require Import PL.SyntaxInCoq.
 Require Import PL.DenotationalSemantics. Import BWFix Sets_CPO.
 Require Import PL.PracticalDenotations. Import KTFix Sets_CL.
-Require Import PL.EquivAndRefine.
+(* Require Import PL.EquivAndRefine. *)
 Import Lang_While DntSem_While1 DntSem_While2.
 Local Open Scope string.
 Local Open Scope Z.
 Local Open Scope sets.
+
+
+
+
+
+
+
 
 Module Lang_WhileDS.
 Import Lang_WhileD.
@@ -81,6 +88,21 @@ Import Lang_WhileDS
        DntSem_WhileD1
        EDenote.
 
+
+
+
+
+(* Module EDenote.
+
+Record EDenote: Type := {
+  nrm: state -> int64 -> Prop;
+  err: state -> Prop;
+}.
+
+End EDenote.
+
+Import EDenote. *)
+
 (* 拆分后的语义 *)
 Definition Seval_r_cv (cv: CV): EDenote :=
     match cv with
@@ -122,8 +144,16 @@ Definition Seval_l (e: Sexpr): EDenote :=
         {| nrm := ∅; err := Sets.full; |}
     end.
 
-Import CDenote.
 
+Import CDenote.
+Notation "x '.(nrm)'" := (CDenote.nrm x)
+  (at level 1, only printing).
+
+Notation "x '.(err)'" := (CDenote.err x)
+  (at level 1, only printing).
+
+Notation "x '.(inf)'" := (CDenote.inf x)
+  (at level 1).
 (* 在if, while和短路求值的情形可能存在问题 *)
 
 Fixpoint Seval_com (c: Scom): CDenote :=
@@ -154,6 +184,15 @@ Import DntSem_WhileDS.
 Import Lang_WhileDS.
 Import CDenote.
 Import EDenote.
+
+Notation "x '.(nrm)'" := (CDenote.nrm x)
+  (at level 1, only printing).
+
+Notation "x '.(err)'" := (CDenote.err x)
+  (at level 1, only printing).
+
+Notation "x '.(inf)'" := (CDenote.inf x)
+  (at level 1).
 
 Definition getval (s : state) (x : var_name): option val :=
     s.(mem) (s.(env) x).
@@ -767,9 +806,7 @@ Proof.
       tauto.  
 Qed.
 
-Print expr.
-
-Lemma es2se_prop {NameX : Names}: 
+Lemma ex2se_prop {NameX : Names}: 
     forall (e : expr) (vcnt : nat) (s1 s2 : state),
     match e with
     | EConst c => True
@@ -804,19 +841,32 @@ Proof.
       pose proof H3 (nat2Sname vcnt).
       rewrite H5 in H2.
       destruct e.
-      - 
 
       
 
     
-Qed.
-
+Admitted.
 
 Definition Serefine_nrm {NameX : Names} (cl : Scomlist) (se : Sexpr) (e : expr): Prop :=
     forall (s1 s2 : state),
         (Seval_comlist cl).(nrm) (name_trans s1) s2 ->
         (Seval_r se).(nrm) s2 ⊆ ((eval_r e).(nrm) ∪ ((eval_r e).(err) × int64)) s1
         /\ (Seval_l se).(nrm) s2 ⊆ ((eval_l e).(nrm) ∪ ((eval_l e).(err) × int64)) s1.
+
+Definition Serefine_err {NameX : Names} (cl : Scomlist) (se : Sexpr) (e : expr): Prop :=
+    forall (s1 s2 : state),
+        ((Seval_comlist cl).(err) (name_trans s1)
+        \/ ((Seval_comlist cl).(nrm) (name_trans s1) s2
+            /\ ((Seval_l se).(err) s2) \/ (Seval_r se).(err) s2))
+        -> ((eval_l e).(err) s1 \/ (eval_r e).(err) s1).
+
+Record Serefine {NameX : Names} (cl : Scomlist) (se : Sexpr) (e : expr): Prop := {
+    nrm_Serefine:
+        Serefine_nrm cl se e;
+    err_Serefine:
+        Serefine_err cl se e;
+    }.
+
 
 Lemma Split_Serefine_nrm {NameX : Names} {NPX : NamesProperty}:
     forall (e : expr) (vcnt : nat), 
@@ -945,119 +995,28 @@ Proof.
         destruct H9.
         destruct H10.
         rewrite H6 in H11, H10, H9.
-        pose proof H4 
 
 Admitted.
 
-
-Definition Serefine_nrm_l {NameX : Names} (cl : Scomlist) (se : Sexpr) (e : expr): Prop :=
-    forall (s1 s2 : state),
-        (Seval_comlist cl).(nrm) (name_trans s1) s2 ->
-        (Seval_l se).(nrm) s2 ⊆ ((eval_l e).(nrm) ∪ ((eval_l e).(err) × int64)) s1.
-
-Lemma Split_Serefine_nrm_l {NameX : Names} {NPX : NamesProperty}:
+Lemma Split_Serefine_err {NameX : Names} {NPX : NamesProperty}:
     forall (e : expr) (vcnt : nat), 
-    Serefine_nrm_l (ex2pre e vcnt) (ex2se e vcnt) e.
-Proof.
-    unfold Serefine_nrm_l.
-    induction e.
-    + intros.
-      simpl.
-      sets_unfold.
-      right.
-      tauto.
-    + intros.
-      simpl.
-      unfold Seval_comlist, ex2pre, skip_sem, CDenote.nrm in H.
-      sets_unfold in H.
-      pose proof name_trans_prop_env s1 s2 x H.
-      rewrite H0.
-      sets_unfold.
-      intros.
-      left.
-      tauto.
-    + intros; sets_unfold; intros; simpl; sets_unfold; tauto.
-    + intros; sets_unfold; intros; simpl; sets_unfold; tauto.
-    + intros vcnt.
-      intros s1 s3.
-      intros.
-      simpl.
-      sets_unfold.
-      intros a.
-      pose proof ex2pre_deref vcnt e.
-      pose proof midstate_deref (name_trans s1) s3 e vcnt.
-      destruct e; simpl; intros; rewrite H0 in H.
-      - tauto.
-      - left.
-        unfold Seval_comlist, ex2pre, skip_sem, CDenote.nrm in H.
-        sets_unfold in H.
-        pose proof name_trans_prop_env s1 s3 x H.
-        unfold deref_sem_nrm.
-        unfold deref_sem_nrm in H2. destruct H2.
-        exists x0.
-        pose proof name_trans_prop_mem s1 s3 x0 H.
-        rewrite <- H3.
-        rewrite <- H4.
-        tauto.
-      - rewrite <- H0 in H.
-        pose proof H1 H.
-        destruct H3.
-        destruct H3.
-        pose proof IHe (S vcnt) s1 x H3.
-        unfold deref_sem_nrm in H2.
-        destruct H2.
-        destruct H2.
-        sets_unfold in H5.
-        unfold Seval_comlist, seq_sem, skip_sem, 
-        asgn_var_sem, asgn_deref_sem, asgn_deref_sem_nrm, CDenote.nrm in H4.
-        sets_unfold in H4.
-        destruct H4.
-        destruct H4.
-        destruct H4.
-        destruct H4.
-        destruct H4.
-        destruct H4.
-        destruct H8.
-        destruct H8.
-        destruct H9.
-        destruct H10.
-        rewrite H7 in H11, H10, H9.
-        pose proof H10 (nat2Sname vcnt).
-        rewrite H12 in H8, H9.
-        rewrite H2 in H8, H9.
-        rewrite <- H12 in H2. 
-        pose proof H5 a.
-
-        destruct (Some (Vint a)).
-        -- admit.
-        --  
-
-
-        admit. (* 这里需要用到：从name_tran s1 到 s2，程序状态如何变化 *)
-      - admit.
-      - admit.
-      - admit.
-    + intros; sets_unfold; intros; simpl; sets_unfold; tauto.
+    Serefine_err (ex2pre e vcnt) (ex2se e vcnt) e.
 Admitted.
 
+Theorem Split_expr_erefine {NameX : Names} {NPX : NamesProperty}: 
+    forall (e : expr) (vcnt: nat), 
+    Serefine (ex2pre e vcnt) (ex2se e vcnt) e.
+Proof.
+    intros.
+    split.
+    apply Split_Serefine_nrm.
+    apply Split_Serefine_err.
+Qed.
 
 
-Record Serefine {NameX : Names} (cl : Scomlist) (se : Sexpr) (e : expr): Prop := {
-    nrm_Serefine:
-    forall (s1 s2 : state) (x : var_name),
-        (Seval_comlist cl).(nrm) (name_trans s1) s2 ->
-        (((Seval_l se).(nrm) s2 ⊆ ((eval_l e).(nrm) ∪ ((eval_l e).(err) × int64)) s1)
-        /\ ((Seval_r se).(nrm) s2 ⊆ ((eval_r e).(nrm) ∪ ((eval_r e).(err) × int64)) s1));
-    err_Serefine:
-        (Seval_comlist cl).(err) ⊆ (eval_l e).(err) /\
-        (Seval_comlist cl).(err) ⊆ (eval_r e).(err) /\
-        (forall (s1 s2 : state), (Seval_comlist cl).(nrm) (name_trans s1) s2 ->
-            (Seval_l se).(err) s2 ⊆ ((eval_l e).(err) s1
-            /\ (Seval_r se).(err) s2 ⊆ ((eval_r e).(err) s1)));
-    }.
 
 (* 证明精化关系 *)
-Theorem Split_expr_erefine {NameX : Names} {NPX : NamesProperty}: 
+(* Theorem Split_expr_erefine {NameX : Names} {NPX : NamesProperty}: 
     forall (e : expr) (RET : var_name) (vcnt: nat), 
     Serefine (ex2pre e RET vcnt) (ex2se e RET vcnt) e.
 Proof.
@@ -1142,18 +1101,62 @@ Proof.
                   destruct H0.
                   exists x0.
                   tauto.
+Admitted. *)
 
+Definition Screfine_nrm {NameX : Names} (cl : Scomlist) (c : com): Prop :=
+    forall (s1 s2 s3 : state),
+        (Seval_comlist cl).(nrm) (name_trans s1) s3
+        -> (eval_com c).(err) s1
+            \/ ((eval_com c).(nrm) s1 s2 
+                /\ (forall (x : var_name) (i : int64),
+                    (s2.(env) x = i 
+                        -> s3.(env) (name2Sname x) = i
+                            /\ s2.(mem) i = s3.(mem) i))).
 
-               
+Definition Screfine_err {NameX : Names} (cl : Scomlist) (c : com): Prop :=
+    forall (s1 : state),
+        (Seval_comlist cl).(err) (name_trans s1) -> (eval_com c).(err) s1.
 
+Definition Screfine_inf {NameX : Names} (cl : Scomlist) (c : com): Prop :=
+    forall (s1 : state),
+        (Seval_comlist cl).(inf) (name_trans s1) 
+        -> (eval_com c).(inf) s1
+            \/ (eval_com c).(err) s1.
 
+Record Screfine {NameX : Names} (cl : Scomlist) (c : com): Prop := {
+    nrm_crefine:
+        Screfine_nrm cl c;
+    err_crefine:
+        Screfine_err cl c;
+    inf_crefine:
+        Screfine_inf cl c;
+}.
+
+Lemma Split_crefine_nrm {NameX : Names} {NPX : NamesProperty}: 
+    forall (c : com) (vcnt : nat),
+        Screfine_nrm (com2comlist c vcnt) c.
+Admitted.
+
+Lemma Split_crefine_err {NameX : Names} {NPX : NamesProperty}: 
+    forall (c : com) (vcnt : nat),
+        Screfine_err (com2comlist c vcnt) c.
+Admitted.
+
+Lemma Split_crefine_inf {NameX : Names} {NPX : NamesProperty}: 
+    forall (c : com) (vcnt : nat),
+        Screfine_inf (com2comlist c vcnt) c.
+Admitted.
+
+Theorem Split_expr_crefine {NameX : Names} {NPX : NamesProperty}: 
+    forall (c : com) (vcnt : nat),
+        Screfine (com2comlist c vcnt) c.
+Proof.
+    intros.
+    split.
+    apply Split_crefine_nrm.
+    apply Split_crefine_err.
+    apply Split_crefine_inf.
 Qed.
 
 
 
-Record Screfine (cl : Scomlist) (c : com): Prop := {
-    nrm_crefine:
-        (Seval_comlist cl).(nrm) ⊆ (eval_com c).(nrm) ∪ ((eval_com c).(err) × state);
-    err_crefine:
-        (Seval_comlist cl).(err) ⊆ (eval_com c).(err);
-}.
