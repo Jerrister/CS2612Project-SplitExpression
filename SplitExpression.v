@@ -19,19 +19,15 @@ Local Open Scope sets.
 
 
 
-
-
-
-
-
 Module Lang_WhileDS.
 Import Lang_WhileD.
+
+
 
 (* 拆分后的语法 *)
 Inductive CV : Type :=
   | SEConst (n : Z): CV
   | SEVar (x : var_name): CV.
-
 
 Inductive Sexpr : Type :=
   | SEConstOrVar (cv: CV): Sexpr
@@ -88,22 +84,6 @@ Import Lang_WhileDS
        DntSem_WhileD1
        EDenote.
 
-
-
-
-
-(* Module EDenote.
-
-Record EDenote: Type := {
-  nrm: state -> int64 -> Prop;
-  err: state -> Prop;
-}.
-
-End EDenote.
-
-Import EDenote. *)
-
-(* 拆分后的语义 *)
 Definition Seval_r_cv (cv: CV): EDenote :=
     match cv with
     | SEConst n =>
@@ -211,11 +191,9 @@ Class NamesProperty {NameX : Names} : Prop :=
     trans_prop3 : forall (x : var_name) (y : nat) , name2Sname x <> nat2Sname y;
 }.
 
-Definition name_trans {NameX : Names} (s1 s2 : state) : Prop :=
-    forall (x : var_name) (i : int64),
-        s1.(env) x = i -> 
-        s2.(env) (name2Sname x) = i 
-        /\ s1.(mem) i = s2.(mem) i.
+Definition correspond {NameX : Names} (s ss : state) : Prop :=
+    (forall (x : var_name) (i : int64), s.(env) x = i <-> ss.(env) (name2Sname x) = i)
+    /\ (forall (a : int64) (v : val), s.(mem) a = Some v -> ss.(mem) a = Some v).
 
 Definition genSEVar {NameX : Names} (x : var_name) : CV:=
     SEVar (name2Sname x).
@@ -695,7 +673,7 @@ Proof.
       destruct H1.
       pose proof H1 H.
       sets_unfold in H3.
-      tauto.
+      tauto.  
     + rewrite H0 in H.
       pose proof eval_comlist_seq 
       (ex2pre (EAddrOf e) (S vcnt)) 
@@ -769,9 +747,15 @@ Proof.
       tauto.  
 Qed.
 
-Lemma some_vint: forall (x1 x2 : int64),
-    (Vint x1) = (Vint x2) -> x1 = x2.
+Lemma some_val: forall (x y :int64), 
+    Some (Vint x) = Some (Vint y) <-> x = y.
 Admitted.
+
+Lemma eval_mono: forall (se : Sexpr) (s : state) (a b : int64),
+    (Seval_r se).(nrm) s a /\ (Seval_r se).(nrm) s b <-> a = b.
+Admitted.
+
+
 
 Lemma ex2se_prop {NameX : Names}: 
     forall (e : expr) (vcnt : nat) (s2 s3 : state) (a : int64),
@@ -788,6 +772,7 @@ Proof.
     unfold var_sem_l.
     simpl.
     sets_unfold.
+    pose proof eval_mono (ex2se e (S vcnt)) as Hm.
     destruct e.
     + tauto.
     + tauto.
@@ -798,12 +783,116 @@ Proof.
       pose proof H5 (nat2Sname vcnt).
       rewrite H in H1.
       rewrite H1.
-      split; intros.
-      - destruct H7.
+      split.
+      - intros.
         destruct H7.
-
-
-Admitted.
+        destruct H7.
+        rewrite <- H7 in H8.
+        rewrite H8 in H4.
+        pose proof some_val a x1.
+        destruct H9.
+        pose proof H9 H4.
+        rewrite <- H11 in H2.
+        apply H2.
+      - intros.
+        exists x0.
+        split.
+        tauto.
+        pose proof Hm s2 a x1.
+        destruct H8.
+        destruct H8.
+        split.
+        tauto.
+        tauto.
+        tauto.
+    + intros. destruct H as [x [H ?]]. destruct H. destruct H.
+      destruct H as [H1 [H2 [H3 [H4 [H5 H6]]]]].
+      rewrite H0 in H4, H5, H6.
+      unfold deref_sem_nrm.
+      pose proof H5 (nat2Sname vcnt).
+      rewrite H in H1.
+      rewrite H1.
+      split.
+      - intros.
+        destruct H7.
+        destruct H7.
+        rewrite <- H7 in H8.
+        rewrite H8 in H4.
+        pose proof some_val a x1.
+        destruct H9.
+        pose proof H9 H4.
+        rewrite <- H11 in H2.
+        apply H2.
+      - intros.
+        exists x0.
+        split.
+        tauto.
+        pose proof Hm s2 a x1.
+        destruct H8.
+        destruct H8.
+        split.
+        tauto.
+        tauto.
+        tauto.
+    + intros. destruct H as [x [H ?]]. destruct H. destruct H.
+      destruct H as [H1 [H2 [H3 [H4 [H5 H6]]]]].
+      rewrite H0 in H4, H5, H6.
+      unfold deref_sem_nrm.
+      pose proof H5 (nat2Sname vcnt).
+      rewrite H in H1.
+      rewrite H1.
+      split.
+      - intros.
+        destruct H7.
+        destruct H7.
+        rewrite <- H7 in H8.
+        rewrite H8 in H4.
+        pose proof some_val a x1.
+        destruct H9.
+        pose proof H9 H4.
+        rewrite <- H11 in H2.
+        apply H2.
+      - intros.
+        exists x0.
+        split.
+        tauto.
+        pose proof Hm s2 a x1.
+        destruct H8.
+        destruct H8.
+        split.
+        tauto.
+        tauto.
+        tauto.
+    + intros. destruct H as [x [H ?]]. destruct H. destruct H.
+      destruct H as [H1 [H2 [H3 [H4 [H5 H6]]]]].
+      rewrite H0 in H4, H5, H6.
+      unfold deref_sem_nrm.
+      pose proof H5 (nat2Sname vcnt).
+      rewrite H in H1.
+      rewrite H1.
+      split.
+      - intros.
+        destruct H7.
+        destruct H7.
+        rewrite <- H7 in H8.
+        rewrite H8 in H4.
+        pose proof some_val a x1.
+        destruct H9.
+        pose proof H9 H4.
+        rewrite <- H11 in H2.
+        apply H2.
+      - intros.
+        exists x0.
+        split.
+        tauto.
+        pose proof Hm s2 a x1.
+        destruct H8.
+        destruct H8.
+        split.
+        tauto.
+        tauto.
+        tauto.
+Qed.
 
 Lemma ex2se_deref {NameX : Names}:
     forall (e : expr) (vcnt : nat),
@@ -819,6 +908,18 @@ Proof.
     intros.
     unfold ex2se.
     destruct e; reflexivity.    
+Qed.
+
+Lemma mem_split : forall (s : state) (x : int64),
+    (exists (v : val), s.(mem) x = Some v) \/ s.(mem) x = None.
+Proof.
+    intros.
+    destruct (s.(mem) x).
+    + left.
+        exists v.
+      tauto.
+    + right.
+      tauto.
 Qed.
 
 Lemma deref4 {NameX : Names} : forall (e : expr) (vcnt : nat) (s : state) (a : int64),
@@ -840,42 +941,80 @@ Proof.
     apply H.
 Qed.
 
+
 Lemma deref7{NameX : Names}:
     forall (e : expr) (vcnt : nat) (x a : int64) (s1 ss3 : state),
+    correspond s1 ss3 ->
     ((eval_r e).(nrm) s1 x \/
     (eval_r e).(err) s1 /\ True)
-    /\ (Seval_r (genSECV vcnt)).(nrm) ss3 x
-    /\ (Seval_r (SEDeref (genSEVar_n vcnt))).(nrm) ss3 a
+    -> (Seval_r (genSECV vcnt)).(nrm) ss3 x
+    -> (Seval_r (SEDeref (genSEVar_n vcnt))).(nrm) ss3 a
     -> (eval_r (EDeref e)).(nrm) s1 a
         \/ (eval_r (EDeref e)).(err) s1 /\ True.
 Proof.
+    unfold correspond.
+    simpl.
+    unfold deref_sem_nrm, deref_sem_err.
+    sets_unfold.
     intros.
     destruct H.
+    destruct H1.
+    destruct H1.
+    destruct H2.
+    destruct H2.
+    destruct H2.
+    destruct H2.
+    rewrite H2 in H1.
+    rewrite H1 in H2, H6.
+    rewrite H4 in H6.
+    pose proof some_val x x1.
+    destruct H7.
+    pose proof H7 H6.
+    rewrite <- H9 in H5.
     destruct H0.
-    destruct H.
-    + left.
-      revert H0 H1 H.
-      unfold Seval_r.
-      simpl.
-      unfold deref_sem_nrm.
-      intros.
-      exists x.
-Admitted.
+    + pose proof mem_split s1 x.
+      destruct H10.
+      - destruct H10 as [v].
+        pose proof H3 x v H10.
+        rewrite H11 in H5.
+        left.
+        exists x.
+        split.
+        tauto.
+        rewrite H5 in H10.
+        tauto.
+      - right.
+        split.
+        right.
+        exists x.
+        split.
+        tauto.
+        left.
+        tauto.
+        tauto.
+    + destruct H0.
+      right.
+      split.
+      left.
+      tauto.
+      tauto.
+Qed.
 
 
 
 Definition Serefine_nrm {NameX : Names} (cl : Scomlist) (se : Sexpr) (e : expr): Prop :=
     forall (s1 ss1 ss2 : state),
-        name_trans s1 ss1 ->
         (Seval_comlist cl).(nrm) ss1 ss2 ->
+        correspond s1 ss1 ->
+        correspond s1 ss2 ->
         (Seval_r se).(nrm) ss2 ⊆ ((eval_r e).(nrm) ∪ ((eval_r e).(err) × int64)) s1
         /\ (Seval_l se).(nrm) ss2 ⊆ ((eval_l e).(nrm) ∪ ((eval_l e).(err) × int64)) s1.
 
 Definition Serefine_err {NameX : Names} (cl : Scomlist) (se : Sexpr) (e : expr): Prop :=
     forall (s1 ss1 ss2 : state),
-        name_trans s1 ss1 ->
+        correspond s1 ss1 ->
         ((Seval_comlist cl).(err) ss1
-        \/ ((Seval_comlist cl).(nrm) ss1 ss2
+        \/ ((Seval_comlist cl).(nrm) ss1 ss2 /\ correspond s1 ss2
             /\ ((Seval_l se).(err) ss2) \/ (Seval_r se).(err) ss2))
         -> ((eval_l e).(err) s1 \/ (eval_r e).(err) s1).
 
@@ -894,23 +1033,137 @@ Lemma Split_Serefine_nrm_deref {NameX : Names} {NPX : NamesProperty}:
 Proof.
     unfold Serefine_nrm.
     sets_unfold.
-    intros e IHe vcnt s1 ss1 ss3 ? ?.
+    intros e IHe vcnt s1 ss1 ss3 ? ? ?.
     split.
     + intros.
-      pose proof midstate_deref ss1 ss3 e vcnt H0 as Hm.
+      pose proof midstate_deref ss1 ss3 e vcnt H as Hm.
       pose proof ex2se_prop e vcnt as Hp.
       pose proof ex2se_deref e vcnt as Hd.
-      pose proof deref4 e vcnt ss3 a H1 as Hd4.
+      pose proof deref4 e vcnt ss3 a H2 as Hd4.
       pose proof deref7 e vcnt as H70.
       destruct e.
-      - admit.
-      - admit.
-      - destruct Hm as [ss2].
+      - revert H H0 H1 H2.
+        unfold correspond.
+        simpl.
+        sets_unfold.
+        unfold deref_sem_nrm.
+        intros.
         destruct H2.
-        pose proof Hp ss2 ss3 H3.
+        pose proof mem_split s1 x.
+        destruct H3.
+        --  left.
+            destruct H2.
+            exists x.
+            split.
+            tauto.
+            destruct H1.
+            destruct H3 as [v].
+            pose proof H5 x v H3.
+            rewrite H3.
+            rewrite H6 in H4.
+            tauto.
+        --  right.
+            split.
+            right.
+            unfold deref_sem_err.
+            exists x.
+            split.
+            destruct H2.
+            tauto.
+            left.
+            tauto.
+            tauto.
+      - revert H H0 H1 H2.
+        unfold correspond.
+        simpl.
+        sets_unfold.
+        unfold deref_sem_nrm.
+        intros.
+        destruct H2.
+        destruct H2.
+        destruct H2.
+        destruct H2.
+        pose proof mem_split s1 x0.
+        pose proof mem_split s1 x1.
+        destruct H5, H6.
+        --  left.
+            destruct H1.
+            exists x0.
+            destruct H5.
+            split.
+            exists x1.
+            split.
+            pose proof H1 x x1.
+            destruct H8.
+            pose proof H9 H2.
+            tauto.
+            destruct H6.
+            pose proof H7 x1 x3 H6.
+            rewrite H6.
+            rewrite <- H8.
+            tauto.
+            pose proof H7 x0 x2 H5.
+            rewrite H5.
+            rewrite <- H8.
+            tauto.
+        --  right.
+            destruct H5.
+            split.
+            left.
+            right.
+            unfold deref_sem_err.
+            exists x1.
+            destruct H1.
+            pose proof H1 x x1.
+            destruct H8.
+            pose proof H9 H2.
+            split.
+            tauto.
+            left.
+            tauto.
+            tauto.
+        --  right.
+            destruct H6.
+            destruct H1.
+            split.
+            right.
+            unfold deref_sem_err.
+            exists x0.
+            split.
+            exists x1.
+            split.
+            pose proof H1 x x1.
+            destruct H8.
+            pose proof H9 H2.
+            tauto.
+            pose proof H7 x1 x2 H6.
+            rewrite H6.
+            rewrite H8 in H4.
+            tauto.
+            left.
+            tauto.
+            tauto.
+        --  right.
+            split.
+            left.
+            right.
+            unfold deref_sem_err.
+            exists x1.
+            destruct H1.
+            pose proof H1 x x1.
+            destruct H8.
+            pose proof H9 H2.
+            split.
+            tauto.
+            left.
+            tauto.
+            tauto. 
+      - destruct Hm as [ss2].
+        destruct H3.
+        pose proof Hp ss2 ss3. # 需要找到一个a
         pose proof Hd4 Hd as Hd4.
         destruct Hd4.
-        rewrite H4 in H5.
+        rewrite H5 in H6.
         pose proof IHe (S vcnt) s1 ss1 ss2 H H2.
         destruct H6.
         pose proof H6 x H5.
@@ -957,7 +1210,7 @@ Proof.
         rewrite <- H4 in H5.
         pose proof H70 x a s1 ss3 as H70.
         tauto.
-Admitted.
+Qed.
 
 
 Lemma Split_Serefine_nrm {NameX : Names} {NPX : NamesProperty}:
@@ -1000,15 +1253,15 @@ Admitted.
         intros.
         destruct H0.
         left.
-        pose proof name_trans_prop_env s1 s2 x H.
-        pose proof name_trans_prop_mem s1 s2 x0 H.
+        pose proof correspond_prop_env s1 s2 x H.
+        pose proof correspond_prop_mem s1 s2 x0 H.
         exists x0.
         rewrite <- H1.
         rewrite <- H2.
         tauto.
       - intros.
         left.
-        pose proof name_trans_prop_env s1 s2 x H.
+        pose proof correspond_prop_env s1 s2 x H.
         rewrite <- H1.
         tauto.
     + intros.
@@ -1053,11 +1306,11 @@ Admitted.
             split.
             exists x1.
             split.
-            pose proof name_trans_prop_env s1 s2 x H0.
+            pose proof correspond_prop_env s1 s2 x H0.
             rewrite <- H1.
             rewrite <- H4.
             reflexivity.
-            pose proof name_trans_prop_mem s1 s2 x1 H0.
+            pose proof correspond_prop_mem s1 s2 x1 H0.
             rewrite <- H4.
             rewrite H3.
             tauto.
@@ -1075,11 +1328,11 @@ Admitted.
             split.
             exists x1.
             split.
-            pose proof name_trans_prop_env s1 s2 x H0.
+            pose proof correspond_prop_env s1 s2 x H0.
             rewrite <- H1.
             rewrite <- H4.
             reflexivity.
-            pose proof name_trans_prop_mem s1 s2 x1 H0.
+            pose proof correspond_prop_mem s1 s2 x1 H0.
             rewrite <- H4.
             rewrite H3.
             tauto.
@@ -1087,7 +1340,7 @@ Admitted.
       - sets_unfold.
         tauto.
       - intros.
-        specialize (HM (name_trans s1) s2 H0).
+        specialize (HM (correspond s1) s2 H0).
         destruct HM.
         destruct H2.
         pose proof IHe (S vcnt) s1 x H2.
@@ -1145,7 +1398,7 @@ Proof.
         unfold CDenote.nrm in H;
         sets_unfold in H.
         --  left.
-            pose proof name_trans_prop_env s1 s2 x H.
+            pose proof correspond_prop_env s1 s2 x H.
             rewrite <- H0.
             rewrite <- H1.
             tauto.
@@ -1156,10 +1409,10 @@ Proof.
             destruct H0.
             exists x1.
             split.
-            pose proof name_trans_prop_env s1 s2 x H.
+            pose proof correspond_prop_env s1 s2 x H.
             rewrite <- H2.
             apply H0.
-            pose proof name_trans_prop_mem s1 s2 x1 H.
+            pose proof correspond_prop_mem s1 s2 x1 H.
             rewrite <- H2.
             apply H1.
       - split.
@@ -1215,20 +1468,20 @@ Admitted. *)
 
 Definition Screfine_nrm {NameX : Names} (cl : Scomlist) (c : com): Prop :=
     forall (s1 s2 ss1 ss2 : state),
-        name_trans s1 ss1 ->
+        correspond s1 ss1 ->
         (Seval_comlist cl).(nrm) ss1 ss2
         -> (eval_com c).(err) s1
             \/ ((eval_com c).(nrm) s1 s2 
-                /\ name_trans s2 ss2).
+                /\ correspond s2 ss2).
 
 Definition Screfine_err {NameX : Names} (cl : Scomlist) (c : com): Prop :=
     forall (s1 ss1 : state),
-    name_trans s1 ss1 ->
+    correspond s1 ss1 ->
         (Seval_comlist cl).(err) ss1 -> (eval_com c).(err) s1.
 
 Definition Screfine_inf {NameX : Names} (cl : Scomlist) (c : com): Prop :=
     forall (s1 ss1 : state),
-    name_trans s1 ss1 ->
+    correspond s1 ss1 ->
         (Seval_comlist cl).(inf) ss1 
         -> (eval_com c).(inf) s1
             \/ (eval_com c).(err) s1.
