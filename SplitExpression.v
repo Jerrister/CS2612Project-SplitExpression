@@ -40,8 +40,8 @@ Inductive Scom : Type :=
   | SCSkip: Scom
   | SCAsgnVar (x: var_name) (e: Sexpr): Scom
   | SCAsgnDeref (cv1 cv2: CV): Scom 
-  | SCIf (pre : Scomlist) (e: Sexpr) (l1 l2: Scomlist): Scom 
-  | SCWhile (pre : Scomlist) (e: Sexpr) (body: Scomlist): Scom
+  | SCIf (e: Sexpr) (l1 l2: Scomlist): Scom 
+  | SCWhile (e: Sexpr) (body: Scomlist): Scom
 with Scomlist : Type :=
   | nil 
   | cons (c : Scom) (l : Scomlist).
@@ -62,8 +62,8 @@ Fixpoint length (l:Scomlist) : nat :=
     | nil => O
     | h :: t => 
         match h with
-        | SCIf pre e c1 c2 => (nat_add (nat_add (nat_add (length pre) (length c1)) (length c2)) (length t))
-        | SCWhile pre e c => (nat_add (nat_add (length pre) (length c)) (length t))
+        | SCIf e c1 c2 => (nat_add (nat_add (length c1) (length c2)) (length t))
+        | SCWhile e c => (nat_add (length c) (length t))
         | _ => (S (length t))
         end
     end.
@@ -144,10 +144,10 @@ Fixpoint Seval_com (c: Scom): CDenote :=
         asgn_var_sem X (Seval_r e)
     | SCAsgnDeref cv1 cv2 =>
         asgn_deref_sem (Seval_r_cv cv1) (Seval_r_cv cv2)
-    | SCIf pre e cl1 cl2 =>
-        seq_sem (Seval_comlist pre) (if_sem (Seval_r e) (Seval_comlist cl1) (Seval_comlist cl2))
-    | SCWhile pre e body =>
-        seq_sem (Seval_comlist pre) (while_sem (Seval_r e) (Seval_comlist body))
+    | SCIf e cl1 cl2 =>
+        if_sem (Seval_r e) (Seval_comlist cl1) (Seval_comlist cl2)
+    | SCWhile e body =>
+        while_sem (Seval_r e) (Seval_comlist body)
     end
 with Seval_comlist (cl : Scomlist) : CDenote :=
     match cl with
@@ -194,7 +194,60 @@ Class NamesProperty {NameX : Names} : Prop :=
 
 Definition correspond {NameX : Names} (s ss : state) : Prop :=
     (forall (x : var_name) (i : int64), s.(env) x = i <-> ss.(env) (name2Sname x) = i)
-    /\ (forall (a : int64) (v : val), s.(mem) a = Some v -> ss.(mem) a = Some v).
+    /\ (forall (a : int64) (v : val), s.(mem) a = Some v -> ss.(mem) a = Some v)
+    /\ (forall (vcnt : nat), s.(mem) (ss.(env) (nat2Sname vcnt)) = None).
+
+Lemma correspond_prop1 {NameX : Names}: 
+    forall (vcnt : nat) (se : Sexpr) (s1 ss1 ss2 : state),
+        correspond s1 ss1
+        -> (Seval_comlist [SCAsgnVar (nat2Sname vcnt) se]).(nrm) ss1 ss2
+        -> correspond s1 ss2.
+Proof.
+    intros.
+    revert H H0.
+    simpl.
+    unfold correspond, asgn_deref_sem_nrm.
+    sets_unfold.
+    intros.
+    destruct H.
+    destruct H1.
+    destruct H0.
+    destruct H0.
+    rewrite H3 in H0.
+    destruct H0.
+    destruct H0.
+    destruct H0.
+    destruct H0.
+    destruct H4.
+    destruct H4.
+    destruct H5.
+    destruct H6.
+    split.
+    intros x0 i.
+    split; intros; pose proof H x0 i as H; 
+    destruct H as [H10 H11]; pose proof H6 (name2Sname x0).
+    pose proof H10 H8.
+    rewrite <- H.
+    tauto.
+    rewrite H8 in H.
+    pose proof H11 H.
+    tauto.
+    split; intros.
+    pose proof H1 a v H8.
+    pose proof classic (ss1.(env) (nat2Sname vcnt) = a).
+    destruct H10.
+    pose proof H2 vcnt.
+    rewrite H10 in H11.
+    rewrite H8 in H11.
+    discriminate.
+    pose proof H7 a H10.
+    rewrite <- H11.
+    tauto.
+    pose proof H6 (nat2Sname vcnt0).
+    pose proof H2 vcnt0.
+    rewrite <- H8.
+    tauto.
+Qed.
 
 Definition genSEVar {NameX : Names} (x : var_name) : CV:=
     SEVar (name2Sname x).
@@ -284,14 +337,14 @@ Fixpoint ex2pre {NameX : Names}
     | EBinop op e1 e2 =>
     match op with
         | OAnd =>
-            [(SCIf (ex2pre e1 (S vcnt)) 
-                (ex2se e1 (S vcnt)) 
+            (ex2pre e1 (S vcnt)) ++
+            [(SCIf (ex2se e1 (S vcnt)) 
                 ((ex2pre e2 (nat_add (S vcnt) (length (ex2pre e1 (S vcnt)))))
                 ++ [(SCAsgnVar (nat2Sname vcnt) (ex2se e2 (nat_add (S vcnt) (length (ex2pre e1 (S vcnt))))))])
                 [(SCAsgnVar (nat2Sname vcnt) (ex2se e1 (S vcnt)))])]
         | OOr =>
-            [(SCIf (ex2pre e1 (S vcnt)) 
-                (ex2se e1 (S vcnt)) 
+            (ex2pre e1 (S vcnt)) ++
+            [(SCIf (ex2se e1 (S vcnt)) 
                 [(SCAsgnVar (nat2Sname vcnt) (ex2se e1 (S vcnt)))]
                 ((ex2pre e2 (nat_add (S vcnt) (length (ex2pre e1 (S vcnt)))))
                 ++ [(SCAsgnVar (nat2Sname vcnt) (ex2se e2 (nat_add (S vcnt) (length (ex2pre e1 (S vcnt))))))]))]
@@ -405,17 +458,26 @@ Fixpoint  com2comlist {NameX : Names}
     | CSeq c1 c2 =>
         (com2comlist c1 vcnt) ++ (com2comlist c2 (nat_add vcnt (length (com2comlist c1 vcnt))))
     | CIf e c1 c2 =>
-        [(SCIf (ex2pre e vcnt)
-            (ex2se e vcnt)
+        (ex2pre e vcnt) ++
+        [(SCIf (ex2se e vcnt)
             (com2comlist c1 (nat_add vcnt (length (ex2pre e vcnt)))) 
             (com2comlist c2 (nat_add (nat_add vcnt (length (ex2pre e vcnt)))
                 (length (com2comlist c1 (nat_add vcnt (length (ex2pre e vcnt))))))))]
     | CWhile e c =>
-        [(SCWhile (ex2pre e vcnt) 
-        (ex2se e vcnt) 
-        (com2comlist c (nat_add vcnt (length (ex2pre e vcnt)))))]
+        (ex2pre e vcnt) ++
+        [(SCWhile (ex2se e vcnt) 
+        ((com2comlist c (nat_add vcnt (length (ex2pre e vcnt))))
+        ++ (ex2pre e (nat_add (nat_add vcnt (length (ex2pre e vcnt)))
+            (length (com2comlist c (nat_add vcnt (length (ex2pre e vcnt)))))))))]
     end.
 
+Lemma correspond_prop2 {NameX : Names}: 
+    forall (e : expr) (vcnt : nat) (s1 ss1 ss2 : state),
+        correspond s1 ss1
+        -> (Seval_comlist (ex2pre e vcnt)).(nrm) ss1 ss2
+        -> correspond s1 ss2.
+Proof.
+Admitted.
 
 (* 定义精化关系 *)
 
@@ -773,12 +835,12 @@ Lemma some_val: forall (x y : int64),
     Some (Vint x) = Some (Vint y) <-> x = y.
 Proof.
     intros.
-    split.
-    + admit.
-    + intros.
-      rewrite H.
+    split; intros.
+    + injection H as ?.
+      tauto.
+    + rewrite H.
       reflexivity.
-Admitted.
+Qed.
 
 Ltac int64_lia :=
   change Int64.min_signed with (-9223372036854775808) in *;
@@ -1199,6 +1261,16 @@ Definition Serefine_nrm {NameX : Names} (cl : Scomlist) (se : Sexpr) (e : expr):
         (Seval_r se).(nrm) ss2 ⊆ ((eval_r e).(nrm) ∪ ((eval_r e).(err) × int64)) s1
         /\ (Seval_l se).(nrm) ss2 ⊆ ((eval_l e).(nrm) ∪ ((eval_l e).(err) × int64)) s1.
 
+Definition Serefine_nrm2 {NameX : Names} (cl : Scomlist) (se : Sexpr) (e : expr): Prop :=
+    forall (s1 ss1 ss2 : state),
+        (Seval_comlist cl).(nrm) ss1 ss2 ->
+        correspond s1 ss1 ->
+        correspond s1 ss2 ->
+        (forall (a b : int64), (Seval_r se).(nrm) ss2 a ->
+            (eval_r e).(nrm) s1 b -> a = b)
+        /\ (forall (a b : int64), (Seval_l se).(nrm) ss2 a ->
+            (eval_l e).(nrm) s1 b -> a = b).
+
 Definition Serefine_err1 {NameX : Names} (cl : Scomlist) (se : Sexpr) (e : expr): Prop :=
     forall (s1 ss1 : state),
         (correspond s1 ss1 
@@ -1548,7 +1620,6 @@ Proof.
         tauto.
 Qed.
 
-
 Lemma Split_Serefine_err1S_deref {NameX : Names} {NPX : NamesProperty}:
     forall (e : expr),
     (forall (vcnt : nat), Serefine_errS (ex2pre e vcnt) (ex2se e vcnt) e)
@@ -1593,6 +1664,11 @@ Proof.
     + admit.
 Admitted.
 
+Lemma Split_Serefine_nrm2 {NameX : Names} {NPX : NamesProperty}:
+    forall (e : expr) (vcnt : nat), 
+    Serefine_nrm2 (ex2pre e vcnt) (ex2se e vcnt) e.
+Admitted.
+
 Lemma Split_Serefine_errS {NameX : Names} {NPX : NamesProperty}:
     forall (e : expr) (vcnt : nat), 
     Serefine_errS (ex2pre e vcnt) (ex2se e vcnt) e.
@@ -1624,13 +1700,22 @@ Proof.
     apply Split_Serefine_err.
 Qed.
 
-Definition Screfine_nrm {NameX : Names} (cl : Scomlist) (c : com): Prop :=
+Definition Screfine_nrm1 {NameX : Names} (cl : Scomlist) (c : com): Prop :=
     forall (s1 s2 ss1 ss2 : state),
         correspond s1 ss1 ->
         (Seval_comlist cl).(nrm) ss1 ss2
-        -> (eval_com c).(err) s1
-            \/ ((eval_com c).(nrm) s1 s2 
-                /\ correspond s2 ss2).
+        -> (((eval_com c).(nrm) s1 s2 /\ correspond s2 ss2)
+            \/ (eval_com c).(err) s1).
+
+Definition Screfine_nrm2 {NameX : Names} (cl : Scomlist) (c : com): Prop :=
+    forall (s1 s2 ss1 ss2 : state),
+        correspond s1 ss1 ->
+        (Seval_comlist cl).(nrm) ss1 ss2
+        -> (((eval_com c).(nrm) s1 s2 -> correspond s2 ss2)
+            /\ ((eval_com c).(inf) s1 -> False)).
+
+Definition Screfine_nrm {NameX : Names} (cl : Scomlist) (c : com): Prop :=
+    Screfine_nrm1 cl c \/ Screfine_nrm2 cl c.
 
 Definition Screfine_err {NameX : Names} (cl : Scomlist) (c : com): Prop :=
     forall (s1 ss1 : state),
@@ -1653,9 +1738,175 @@ Record Screfine {NameX : Names} (cl : Scomlist) (c : com): Prop := {
         Screfine_inf cl c;
 }.
 
+Lemma Split_crefine_nrm_Skip {NameX : Names} {NPX : NamesProperty}: 
+    forall (vcnt : nat),
+        Screfine_nrm2 (com2comlist CSkip vcnt) CSkip.
+Proof.
+    unfold Screfine_nrm2.
+    simpl.
+    sets_unfold.
+    intros.
+    split.
+    intros.
+    rewrite H0 in H.
+    rewrite H1 in H.
+    tauto.
+    tauto.
+Qed.
+
+
+Definition midstate_asgnvar {NameX : Names}
+    (vcnt : nat) (x : var_name) (e : expr) : Prop :=
+    forall (ss1 ss3 : state),
+    (Seval_comlist (com2comlist (CAsgnVar x e) vcnt)).(nrm) ss1 ss3
+    -> exists (ss2 : state),
+    (Seval_comlist (ex2pre e vcnt)).(nrm) ss1 ss2
+    /\ (Seval_comlist [SCAsgnVar (name2Sname x) (ex2se e vcnt)]).(nrm) ss2 ss3.
+
+
+Lemma midstate_asgnvar_correct {NameX : Names}: 
+    forall (vcnt : nat) (x : var_name) (e : expr),
+    midstate_asgnvar vcnt x e.
+Proof.
+    unfold midstate_asgnvar.
+    intros.
+    pose proof eval_comlist_seq_nrm (ex2pre e vcnt) [SCAsgnVar (name2Sname x) (ex2se e vcnt)] ss1 ss3 as Hm.
+    destruct Hm.
+    pose proof H0 H.
+    sets_unfold in H2.
+    destruct H2.
+    exists x0.
+    tauto.
+Qed.
+
+Lemma midstate_cor_asgnvar {NameX : Names} {NPX : NamesProperty} : 
+    forall (e : expr) (vcnt : nat) (x : var_name) (s1 ss1 ss2 ss3 : state),
+    correspond s1 ss1
+    -> correspond s1 ss3
+    -> (Seval_comlist (ex2pre e vcnt)).(nrm) ss1 ss2
+    -> (Seval_comlist [SCAsgnVar (name2Sname x) (ex2se e vcnt)]).(nrm) ss2 ss3
+    -> correspond s1 ss2.
+Admitted.
+
+
+Lemma Split_crefine_nrm_AsgnVar_aux {NameX : Names} {NPX : NamesProperty}:
+    forall (vcnt : nat) (x : var_name) (e : expr),
+    forall (s1 s2 ss1 ss2 ss3 : state),
+    (Seval_comlist (ex2pre e vcnt)).(nrm) ss1 ss2
+    -> (Seval_comlist [SCAsgnVar (name2Sname x) (ex2se e vcnt)]).(nrm) ss2 ss3
+    -> correspond s1 ss1 
+    -> correspond s1 ss2
+    -> (((eval_com (CAsgnVar x e)).(nrm) s1 s2 -> correspond s2 ss3)
+        /\ ((eval_com (CAsgnVar x e)).(inf) s1 -> False)).
+Proof.
+    intros.
+    split; [ |simpl;tauto].
+    pose proof Split_Serefine_nrm2 e vcnt as Hse.
+    unfold Serefine_nrm2 in Hse.
+    pose proof Hse s1 ss1 ss2 H H1 H2.
+    destruct H3.
+    revert H0 H1 H2.
+    simpl.
+    sets_unfold.
+    unfold asgn_deref_sem_nrm, correspond.
+    intros.
+    destruct H0.
+    destruct H0.
+    rewrite H6 in H0.
+    destruct H0.
+    destruct H0.
+    destruct H0.
+    destruct H7.
+    destruct H8.
+    destruct H9.
+    destruct H10.
+    destruct H5.
+    destruct H5.
+    destruct H5.
+    destruct H12.
+    destruct H13.
+    destruct H14.
+    destruct H15.
+    destruct H2.
+    split; intros.
+    + pose proof H15 x5.
+      pose proof H2 x5 i.
+      pose proof H10 (name2Sname x5).
+      rewrite H18 in H19.
+      rewrite H20 in H19.
+      tauto.
+    + pose proof H16 a.
+      pose proof H11 a.
+      pose proof H2 x x3.
+      destruct H21.
+      pose proof H21 H5.
+      pose proof H10 (name2Sname x).
+      rewrite H23 in H0.
+      pose proof classic (x3 = a).
+      destruct H25.
+      - rewrite <- H25.
+        rewrite H0.
+        rewrite H9.
+        rewrite <- H25 in H18.
+        rewrite H14 in H18.
+        rewrite <- H18.
+        pose proof H3 x2 x4 H7 H12.
+        rewrite H26.
+        tauto.
+      - pose proof H19 H25.
+        rewrite H18 in H26.
+        pose proof H17 a v H26.
+        rewrite H0 in H25.
+        pose proof H20 H25.
+        rewrite H27 in H28.
+        rewrite H28.
+        tauto.
+Qed.
+
+
+(* Lemma Split_crefine_nrm_AsgnVar {NameX : Names} {NPX : NamesProperty}: 
+    forall (vcnt : nat) (x : var_name) (e : expr),
+    Screfine_nrm2 (com2comlist (CAsgnVar x e) vcnt) (CAsgnVar x e).
+Proof.
+    intros.
+    unfold Screfine_nrm2.
+    intros s1 s2 ss1 ss3 ? ? .
+    split; [ |simpl;tauto].
+    pose proof eval_comlist_seq_nrm (ex2pre e vcnt) [SCAsgnVar (name2Sname x) (ex2se e vcnt)] ss1 ss3 as Hm.
+    destruct Hm as [Hm1 Hm2].
+    pose proof Hm1 H0.
+    sets_unfold in H1.
+    destruct H1 as [ss2].
+    destruct H1.
+    intros.
+    pose proof midstate_cor_asgnvar e vcnt x s1 ss1 ss2 ss3 as Hmcav.
+    simpl.
+    unfold asgn_deref_sem_nrm.
+    intros.
+    unfold 
+    simpl.
+
+Admitted. *)
+
+
+
+
 Lemma Split_crefine_nrm {NameX : Names} {NPX : NamesProperty}: 
     forall (c : com) (vcnt : nat),
-        Screfine_nrm (com2comlist c vcnt) c.
+        Screfine_nrm2 (com2comlist c vcnt) c.
+Proof.
+    induction c.
+    + admit.
+    + admit.
+    + admit.
+    + revert IHc1 IHc2.
+      unfold Screfine_nrm2.
+      intros.
+      split.
+      - intros.
+        
+    + admit.
+    + admit.
 Admitted.
 
 Lemma Split_crefine_err {NameX : Names} {NPX : NamesProperty}: 
