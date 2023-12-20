@@ -3,6 +3,20 @@ SJTU CS2612 Final Project: Coq Project of expresion split.
 
 Put SplitExpression.v file under /cs2612-aut2023/pl/ folder can successfully compile it.
 # Dev Log
+## 1220
+* 反复横跳地修改crefine的描述，最后发现问题出在correspond不够强上
+* 发现了erefine和crefine看起来更好的描述方式。事实上，可以证明二者是等价的
+* 加强了correspond，使得其对vcnt也有效力。这样一来就能证明经过ex2pre和c2pre能够维持correspond关系，从而完成midstate上correspond的传递
+* 完成了crefine_asgnvar中的一些步骤
+* 修改了SCIf, SCWhile的声明及其引用
+### 下一步
+* 继续erefine_deref_err的证明（仿照nrm的情形推理AsgnVar前后的关系）
+* 完善erefine的其他情形和三个待证引理
+* 将com2comlist变成c2pre, c2sc
+* 证明pre对cor的保持
+* 探索复杂情况：Binop和AsgnDeref的处理办法
+
+
 ## 1219
 * 定义了erefine_err的情形，并发现了erefine_errS这一性质
 * 证明完毕了erefine_deref_nrm的情形（除了两个单值引理和一个中间correspond引理）
